@@ -5,18 +5,19 @@
 @tailwind utilities;
 
 :root {
-  --bg-base:       #0d0d14;
-  --bg-surface:    #13131f;
-  --bg-elevated:   #1a1a2e;
-  --bg-overlay:    #20203a;
-  --border:        #2a2a42;
-  --border-bright: #3a3a58;
-  --text-primary:  #e8e8f4;
-  --text-secondary:#9090b8;
-  --text-muted:    #5a5a80;
-  --accent:        #7c6af7;
-  --accent-dim:    #3d3470;
-  --accent-glow:   rgba(124,106,247,0.15);
+  /* Modern VS Code Dark Theme */
+  --bg-base:       #1e1e1e; /* VS Code Main Editor Area */
+  --bg-surface:    #181818; /* VS Code Sidebar / Top bar */
+  --bg-elevated:   #252526; /* VS Code Panels, Cards, Elevated sections */
+  --bg-overlay:    #2d2d2d; /* VS Code Inputs, Popups, Hover states */
+  --border:        #2d2d2d; /* Subtle soft divider */
+  --border-bright: #3c3c3c; /* Defined border */
+  --text-primary:  #f3f3f3; /* Bright, crisp off-white */
+  --text-secondary:#cccccc; /* Highly readable body text, never faint */
+  --text-muted:    #969696; /* Subtle labels, clearly visible */
+  --accent:        #0078d4; /* VS Code Modern Action Blue */
+  --accent-dim:    rgba(0, 120, 212, 0.18);
+  --accent-glow:   rgba(0, 120, 212, 0.15);
 }
 
 * { box-sizing: border-box; }
@@ -36,21 +37,21 @@ html, body, #root {
 /* Scrollbars */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+::-webkit-scrollbar-thumb { background: #3e3e42; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #555555; }
 
 /* KaTeX overrides */
-.katex { font-size: 1em !important; color: var(--text-primary); }
+.katex { font-size: 1.05em !important; color: var(--text-primary); }
 .katex-display { margin: 1em 0; }
 
-/* Prose overrides for dark mode */
+/* Prose overrides for dark mode - enhanced readability */
 .prose { color: var(--text-primary); max-width: none; }
-.prose h1,.prose h2,.prose h3,.prose h4 { color: var(--text-primary); font-family: 'Syne', sans-serif; }
-.prose p { color: var(--text-secondary); margin-bottom: 0.75em; font-size: 15px; line-height: 1.7; }
-.prose strong { color: var(--text-primary); }
-.prose code { color: #a78bfa; background: rgba(124,106,247,0.12); padding: 0.1em 0.35em; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.875em; }
-.prose pre { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; }
-.prose blockquote { border-left: 3px solid var(--accent); padding-left: 1em; color: var(--text-muted); font-style: italic; }
+.prose h1,.prose h2,.prose h3,.prose h4 { color: #ffffff; font-family: 'Syne', sans-serif; }
+.prose p { color: var(--text-primary); margin-bottom: 0.75em; font-size: 15.5px; line-height: 1.75; }
+.prose strong { color: #ffffff; }
+.prose code { color: #9cdcfe; background: #252526; border: 1px solid #333333; padding: 0.15em 0.4em; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.875em; }
+.prose pre { background: #181818; border: 1px solid var(--border-bright); border-radius: 8px; }
+.prose blockquote { border-left: 3px solid var(--accent); padding-left: 1em; color: var(--text-secondary); font-style: italic; }
 .prose ul li::marker,.prose ol li::marker { color: var(--accent); }
 
 /* Animations */

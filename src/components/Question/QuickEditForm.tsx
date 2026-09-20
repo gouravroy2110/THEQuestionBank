@@ -15,7 +15,7 @@ interface Props {
 }
 
 const STATUSES: { value: Status; label: string; color: string }[] = [
-  { value: 'unattempted', label: 'Unattempted', color: '#5a5a80' },
+  { value: 'unattempted', label: 'Unattempted', color: '#858585' },
   { value: 'wrong', label: 'Wrong', color: '#f43f5e' },
   { value: 'partial', label: 'Partial', color: '#f59e0b' },
   { value: 'correct', label: 'Correct', color: '#10b981' },

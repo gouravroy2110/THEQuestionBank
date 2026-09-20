@@ -16,7 +16,7 @@ const STATUSES     = ['unattempted','wrong','partial','correct'] as const
 const DIFFICULTIES = ['easy','medium','hard','unseen'] as const
 
 const statusColors: Record<string,string> = {
-  wrong:'#f43f5e', partial:'#f59e0b', correct:'#10b981', unattempted:'#5a5a80',
+  wrong:'#f43f5e', partial:'#f59e0b', correct:'#10b981', unattempted:'#858585',
 }
 const diffColors: Record<string,string> = {
   easy:'#10b981', medium:'#0ea5e9', hard:'#f43f5e', unseen:'#8b5cf6',

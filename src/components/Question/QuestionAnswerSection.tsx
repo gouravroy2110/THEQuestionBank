@@ -185,7 +185,7 @@ export function QuestionAnswerSection({
                     ? 'border-rose-500 bg-rose-500/10 text-rose-200'
                     : isSelected
                     ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--text-primary)]'
-                    : 'border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--border-bright)] text-[var(--text-secondary)]'
+                    : 'border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--border-bright)] text-[var(--text-primary)]'
                 }`}
               >
                 <div className="mt-0.5 flex-shrink-0">
@@ -202,7 +202,7 @@ export function QuestionAnswerSection({
                   )}
                 </div>
 
-                <span className="font-mono text-xs font-bold text-[var(--text-muted)] mt-0.5 flex-shrink-0">
+                <span className="font-mono text-xs font-bold text-[var(--text-secondary)] mt-0.5 flex-shrink-0">
                   {letter}.
                 </span>
 
@@ -242,7 +242,7 @@ export function QuestionAnswerSection({
                     ? 'border-rose-500 bg-rose-500/10 text-rose-200'
                     : isSelected
                     ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--text-primary)]'
-                    : 'border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--border-bright)] text-[var(--text-secondary)]'
+                    : 'border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--border-bright)] text-[var(--text-primary)]'
                 }`}
               >
                 <div className="mt-0.5 flex-shrink-0">
@@ -257,7 +257,7 @@ export function QuestionAnswerSection({
                   )}
                 </div>
 
-                <span className="font-mono text-xs font-bold text-[var(--text-muted)] mt-0.5 flex-shrink-0">
+                <span className="font-mono text-xs font-bold text-[var(--text-secondary)] mt-0.5 flex-shrink-0">
                   {letter}.
                 </span>
 

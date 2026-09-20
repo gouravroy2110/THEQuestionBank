@@ -362,19 +362,21 @@ function QuestionStripItem({ question, active, index, onClick }: {
 }) {
   const statusDot: Record<string, string> = {
     wrong: 'bg-rose-400', partial: 'bg-amber-400',
-    correct: 'bg-emerald-400', unattempted: 'bg-[var(--text-muted)]',
+    correct: 'bg-emerald-400', unattempted: 'bg-zinc-500',
   }
   return (
     <button
       onClick={onClick}
       className={`flex-shrink-0 flex flex-col items-center gap-1 px-2.5 py-2 rounded-lg border transition-all ${
         active
-          ? 'border-[var(--accent)] bg-[var(--accent-glow)]'
+          ? 'border-[var(--accent)] bg-[var(--accent-glow)] shadow-sm'
           : 'border-[var(--border)] hover:border-[var(--border-bright)] hover:bg-[var(--bg-elevated)]'
       }`}
     >
       <span className={`w-2 h-2 rounded-full ${statusDot[question.status]}`} />
-      <span className="text-[10px] text-[var(--text-muted)] font-mono">{index + 1}</span>
+      <span className={`text-[11px] font-mono ${active ? 'text-[var(--text-primary)] font-bold' : 'text-[var(--text-muted)]'}`}>
+        {index + 1}
+      </span>
     </button>
   )
 }
