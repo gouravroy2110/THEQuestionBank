@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Edit, Eye, EyeOff, Lightbulb, BookOpen } from 'lucide-react'
-import type { ResolvedQuestion } from '../../types'
+import type { ResolvedQuestion, Question, Status } from '../../types'
 import { ContentBlockViewer } from '../ContentBlock/ContentBlockViewer'
+import { QuestionAnswerSection } from './QuestionAnswerSection'
+import { QuickEditForm } from './QuickEditForm'
 import { StatusBadge, DifficultyBadge, TagChip, Button } from '../UI'
 
 interface Props {
@@ -11,9 +13,28 @@ interface Props {
   onPrev: () => void
   onNext: () => void
   onEdit?: () => void
+  showAnswers?: boolean
+  shuffleOptions?: boolean
+  isQuickEditing?: boolean
+  onToggleQuickEdit?: () => void
+  onStatusChange?: (newStatus: Status) => void
+  onQuestionUpdated?: (updated: Question) => void
 }
 
-export function QuestionDetail({ question, total, index, onPrev, onNext, onEdit }: Props) {
+export function QuestionDetail({
+  question,
+  total,
+  index,
+  onPrev,
+  onNext,
+  onEdit,
+  showAnswers = false,
+  shuffleOptions = true,
+  isQuickEditing = false,
+  onToggleQuickEdit,
+  onStatusChange,
+  onQuestionUpdated,
+}: Props) {
   const [solutionVisible, setSolutionVisible] = useState(false)
 
   // Hide solution when question changes
@@ -26,11 +47,27 @@ export function QuestionDetail({ question, total, index, onPrev, onNext, onEdit 
       if (e.key === 'ArrowRight') onNext()
       if (e.key === 'ArrowLeft')  onPrev()
       if (e.key === 's' || e.key === 'S') setSolutionVisible(v => !v)
-      if ((e.key === 'e' || e.key === 'E') && onEdit) onEdit()
+      if ((e.key === 'e' || e.key === 'E') && onToggleQuickEdit) {
+        e.preventDefault()
+        onToggleQuickEdit()
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onNext, onPrev, onEdit])
+  }, [onNext, onPrev, onToggleQuickEdit])
+
+  if (isQuickEditing && onToggleQuickEdit) {
+    return (
+      <QuickEditForm
+        question={question}
+        onSave={q => {
+          onQuestionUpdated?.(q)
+          onToggleQuickEdit()
+        }}
+        onCancel={onToggleQuickEdit}
+      />
+    )
+  }
 
   const projectTags = question.effectiveTags.filter(t => question.project?.tagIds.includes(t.id))
   const directTags  = question.effectiveTags.filter(t => !question.project?.tagIds.includes(t.id))
@@ -52,11 +89,20 @@ export function QuestionDetail({ question, total, index, onPrev, onNext, onEdit 
           )}
         </div>
         <div className="flex items-center gap-2">
-          {onEdit && (
+          {onToggleQuickEdit ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Edit size={13}/>}
+              onClick={onToggleQuickEdit}
+            >
+              Quick Edit <span className="text-[10px] text-[var(--text-muted)] opacity-60 ml-0.5">[E]</span>
+            </Button>
+          ) : onEdit ? (
             <Button variant="ghost" size="sm" icon={<Edit size={13}/>} onClick={onEdit}>
               Edit
             </Button>
-          )}
+          ) : null}
           <button onClick={onPrev} disabled={index === 0}
             className="p-1.5 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-bright)] disabled:opacity-30 transition-colors">
             <ChevronLeft size={15}/>
@@ -104,6 +150,14 @@ export function QuestionDetail({ question, total, index, onPrev, onNext, onEdit 
           </div>
           <ContentBlockViewer block={question.questionContent} />
         </div>
+
+        {/* Answering Section (MCQ, MSQ, NAT) */}
+        <QuestionAnswerSection
+          question={question}
+          showAnswers={showAnswers}
+          shuffleOptions={shuffleOptions}
+          onStatusChange={onStatusChange}
+        />
 
         {/* Solution divider + toggle */}
         <div>

@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   Eye, PanelLeftClose, PanelLeftOpen, LayoutGrid,
-  LayoutDashboard, ExternalLink, LayoutList, Sparkles
+  LayoutDashboard, ExternalLink, LayoutList, Sparkles, Shuffle
 } from 'lucide-react'
 import { db } from '../db/schema'
-import type { Question, Tag, Project, FilterState, ResolvedQuestion, MetaField } from '../types'
+import type { Question, Tag, Project, FilterState, ResolvedQuestion, MetaField, Status } from '../types'
 import { QuestionDetail } from '../components/Question/QuestionDetail'
 import { QuestionCard } from '../components/Question/QuestionCard'
 import { FilterPanel } from '../components/Layout/FilterPanel'
@@ -47,6 +47,9 @@ export default function ViewerWindow() {
   const [filterOpen, setFilterOpen]   = useState(true)
   const [spotlightOpen, setSpotlightOpen] = useState(false)
   const [listMode, setListMode]       = useState<'strip' | 'grid'>('strip')
+  const [showAnswers, setShowAnswers] = useState(false)
+  const [shuffleOptions, setShuffleOptions] = useState(true)
+  const [quickEditMode, setQuickEditMode]   = useState(false)
 
   // Apply filters
   const filtered = useFilter(allQuestions, filter, tagMap, projectMap)
@@ -69,6 +72,13 @@ export default function ViewerWindow() {
   const resolvedQuestion: ResolvedQuestion | null = activeQuestion
     ? resolveQuestion(activeQuestion, projectMap, tagMap)
     : null
+
+  const handleStatusChange = async (newStatus: Status) => {
+    if (!activeQuestion) return
+    const updated: Question = { ...activeQuestion, status: newStatus, updatedAt: Date.now() }
+    await db.questions.put(updated)
+    broadcast({ type: 'question:saved', payload: { id: updated.id, projectId: updated.projectId } })
+  }
 
   const openEditor = () => {
     const url = `${window.location.origin}${window.location.pathname}?window=editor${
@@ -125,6 +135,46 @@ export default function ViewerWindow() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Show Answers toggle */}
+          <label
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] cursor-pointer select-none hover:border-[var(--border-bright)] transition-colors"
+            title="Toggle showing correct answers immediately"
+          >
+            <input
+              type="checkbox"
+              checked={showAnswers}
+              onChange={e => setShowAnswers(e.target.checked)}
+              className="rounded accent-[var(--accent)] cursor-pointer w-3.5 h-3.5"
+            />
+            <span className="text-[var(--text-secondary)] font-medium">Show Answers</span>
+          </label>
+
+          {/* Shuffle Options toggle */}
+          <label
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] cursor-pointer select-none hover:border-[var(--border-bright)] transition-colors"
+            title="Shuffle MCQ/MSQ option display order while practicing"
+          >
+            <input
+              type="checkbox"
+              checked={shuffleOptions}
+              onChange={e => setShuffleOptions(e.target.checked)}
+              className="rounded accent-[var(--accent)] cursor-pointer w-3.5 h-3.5"
+            />
+            <span className="text-[var(--text-secondary)] font-medium">Shuffle</span>
+          </label>
+
+          {/* Reshuffle button if random query active */}
+          {filter.rawQuery && /random|sample/i.test(filter.rawQuery) && (
+            <button
+              onClick={() => setFilter(f => ({ ...f, randomSeed: Math.floor(Math.random() * 1000000) }))}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 transition-colors animate-fade-in"
+              title="Reshuffle random question selection"
+            >
+              <Shuffle size={13} className="text-purple-400" />
+              <span className="font-medium">Reshuffle</span>
+            </button>
+          )}
+
           <button
             onClick={() => setSpotlightOpen(true)}
             className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[var(--accent-dim)] transition-colors"
@@ -201,6 +251,11 @@ export default function ViewerWindow() {
                     onPrev={() => setActiveIndex(i => Math.max(0, i - 1))}
                     onNext={() => setActiveIndex(i => Math.min(filtered.length - 1, i + 1))}
                     onEdit={openEditor}
+                    showAnswers={showAnswers}
+                    shuffleOptions={shuffleOptions}
+                    isQuickEditing={quickEditMode}
+                    onToggleQuickEdit={() => setQuickEditMode(m => !m)}
+                    onStatusChange={handleStatusChange}
                   />
                 ) : null}
               </div>
@@ -255,6 +310,11 @@ export default function ViewerWindow() {
                     onPrev={() => setActiveIndex(i => Math.max(0, i - 1))}
                     onNext={() => setActiveIndex(i => Math.min(filtered.length - 1, i + 1))}
                     onEdit={openEditor}
+                    showAnswers={showAnswers}
+                    shuffleOptions={shuffleOptions}
+                    isQuickEditing={quickEditMode}
+                    onToggleQuickEdit={() => setQuickEditMode(m => !m)}
+                    onStatusChange={handleStatusChange}
                   />
                 </div>
               )}

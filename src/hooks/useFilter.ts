@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { Question, FilterState, Tag, Project } from '../types'
-import { parseQuery, evaluateQueryAST } from '../utils/queryParser'
+import { parseSetQuery, executeSetQuery } from '../utils/queryParser'
 
 const STATUS_ORDER: Record<string,number> = { wrong:0, partial:1, unattempted:2, correct:3 }
 const DIFF_ORDER:   Record<string,number> = { unseen:0, hard:1, medium:2, easy:3 }
@@ -14,11 +14,16 @@ export function useFilter(
   return useMemo(() => {
     let qs = [...questions]
 
-    // If a raw SQL-like query is provided, evaluate via AST
+    // If a raw SQL-like query is provided, evaluate via set query engine
     if (filter.rawQuery?.trim()) {
-      const ast = parseQuery(filter.rawQuery)
-      if (ast) {
-        qs = qs.filter(q => evaluateQueryAST(ast, q, tagMap, projectMap))
+      const setNode = parseSetQuery(filter.rawQuery)
+      if (setNode) {
+        qs = executeSetQuery(setNode, qs, tagMap, projectMap, filter.randomSeed)
+        // If query uses random sampling, preserve the randomized order
+        const isRandom = /random|sample/i.test(filter.rawQuery)
+        if (isRandom) {
+          return qs
+        }
       }
     } else {
       // Standard filter pipeline

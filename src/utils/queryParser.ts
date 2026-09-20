@@ -7,12 +7,25 @@ export type ASTNode =
   | { type: 'DIRECTIVE'; field: 'project' | 'status' | 'difficulty' | 'tag'; value: string }
   | { type: 'TEXT'; query: string }
 
+export type SetQueryNode =
+  | { type: 'UNION'; left: SetQueryNode; right: SetQueryNode }
+  | { type: 'SLICE'; child: SetQueryNode; start?: number; end?: number }
+  | { type: 'RANDOM'; child: SetQueryNode; count: number; seed?: number }
+  | { type: 'FILTER'; ast: ASTNode }
+
 type TokenType =
   | 'AND'
   | 'OR'
   | 'NOT'
+  | 'UNION'
+  | 'RANDOM'
   | 'LPAREN'
   | 'RPAREN'
+  | 'LBRACKET'
+  | 'RBRACKET'
+  | 'COLON'
+  | 'COMMA'
+  | 'NUMBER'
   | 'DIRECTIVE'
   | 'TEXT'
   | 'EOF'
@@ -52,6 +65,30 @@ export function tokenize(input: string): Token[] {
       continue
     }
 
+    if (ch === '[') {
+      tokens.push({ type: 'LBRACKET', value: '[', start: i, end: i + 1 })
+      i++
+      continue
+    }
+
+    if (ch === ']') {
+      tokens.push({ type: 'RBRACKET', value: ']', start: i, end: i + 1 })
+      i++
+      continue
+    }
+
+    if (ch === ',') {
+      tokens.push({ type: 'COMMA', value: ',', start: i, end: i + 1 })
+      i++
+      continue
+    }
+
+    if (ch === ':') {
+      tokens.push({ type: 'COLON', value: ':', start: i, end: i + 1 })
+      i++
+      continue
+    }
+
     // Directives: @field:value or @field:"value"
     if (ch === '@') {
       const match = input.slice(i).match(/^@(project|status|difficulty|tag):/i)
@@ -74,7 +111,7 @@ export function tokenize(input: string): Token[] {
             valEnd++
           }
         } else {
-          while (valEnd < len && !/\s|[()]/.test(input[valEnd])) {
+          while (valEnd < len && !/\s|[()[\]:,]/.test(input[valEnd])) {
             valEnd++
           }
           value = input.slice(valStart, valEnd)
@@ -111,15 +148,21 @@ export function tokenize(input: string): Token[] {
       continue
     }
 
-    // Bare word: check for AND, OR, NOT or general text
+    // Bare word: check for number, operators, or text
     const wordStart = i
-    while (i < len && !/\s|[()]/.test(input[i])) {
+    while (i < len && !/\s|[()[\]:,]/.test(input[i])) {
       i++
     }
     const word = input.slice(wordStart, i)
     const upper = word.toUpperCase()
 
-    if (upper === 'AND' || word === '&&') {
+    if (/^\d+$/.test(word)) {
+      tokens.push({ type: 'NUMBER', value: word, start: wordStart, end: i })
+    } else if (upper === 'UNION' || upper === 'JOIN') {
+      tokens.push({ type: 'UNION', value: word, start: wordStart, end: i })
+    } else if (upper === 'RANDOM' || upper === 'SAMPLE') {
+      tokens.push({ type: 'RANDOM', value: word, start: wordStart, end: i })
+    } else if (upper === 'AND' || word === '&&') {
       tokens.push({ type: 'AND', value: word, start: wordStart, end: i })
     } else if (upper === 'OR' || word === '||') {
       tokens.push({ type: 'OR', value: word, start: wordStart, end: i })
@@ -134,7 +177,7 @@ export function tokenize(input: string): Token[] {
   return tokens
 }
 
-// ─── Recursive Descent Parser ─────────────────────────────────────────────────
+// ─── Boolean AST Recursive Descent Parser ─────────────────────────────────────
 
 export function parseQuery(input: string): ASTNode | null {
   const tokens = tokenize(input)
@@ -150,7 +193,6 @@ export function parseQuery(input: string): ASTNode | null {
     return tokens[pos++]
   }
 
-  // OrExpression := AndExpression ( 'OR' AndExpression )*
   function parseOr(): ASTNode | null {
     let left = parseAnd()
     if (!left) return null
@@ -165,14 +207,13 @@ export function parseQuery(input: string): ASTNode | null {
     return left
   }
 
-  // AndExpression := UnaryExpression ( ('AND'? UnaryExpression) )*
   function parseAnd(): ASTNode | null {
     let left = parseUnary()
     if (!left) return null
 
     while (true) {
       const p = peek()
-      if (p.type === 'OR' || p.type === 'RPAREN' || p.type === 'EOF') {
+      if (p.type === 'OR' || p.type === 'RPAREN' || p.type === 'EOF' || p.type === 'UNION') {
         break
       }
 
@@ -188,7 +229,6 @@ export function parseQuery(input: string): ASTNode | null {
     return left
   }
 
-  // UnaryExpression := ('NOT' UnaryExpression) | Primary
   function parseUnary(): ASTNode | null {
     if (peek().type === 'NOT') {
       consume()
@@ -199,7 +239,6 @@ export function parseQuery(input: string): ASTNode | null {
     return parsePrimary()
   }
 
-  // Primary := '(' OrExpression ')' | DIRECTIVE | TEXT
   function parsePrimary(): ASTNode | null {
     const t = peek()
 
@@ -221,7 +260,7 @@ export function parseQuery(input: string): ASTNode | null {
       }
     }
 
-    if (t.type === 'TEXT') {
+    if (t.type === 'TEXT' || t.type === 'NUMBER') {
       consume()
       return {
         type: 'TEXT',
@@ -239,7 +278,258 @@ export function parseQuery(input: string): ASTNode | null {
   }
 }
 
-// ─── Query Evaluator ──────────────────────────────────────────────────────────
+// ─── Set Query Parser (Set Operations, Slicing, Random Sampling) ───────────────
+
+export function parseSetQuery(input: string): SetQueryNode | null {
+  const tokens = tokenize(input)
+  if (tokens.length <= 1) return null
+
+  let pos = 0
+
+  function peek(): Token {
+    return tokens[pos] || { type: 'EOF', value: '', start: 0, end: 0 }
+  }
+
+  function consume(): Token {
+    return tokens[pos++]
+  }
+
+  // 1. UnionExpression := SlicedExpression ( 'UNION' SlicedExpression )*
+  function parseUnion(): SetQueryNode | null {
+    let left = parseSliced()
+    if (!left) return null
+
+    while (peek().type === 'UNION') {
+      consume() // consume UNION / JOIN
+      const right = parseSliced()
+      if (!right) break
+      left = { type: 'UNION', left, right }
+    }
+
+    return left
+  }
+
+  // 2. SlicedExpression := PrimarySet ( '[' [NUMBER] ':' [NUMBER] ']' )*
+  function parseSliced(): SetQueryNode | null {
+    let child = parsePrimarySet()
+    if (!child) return null
+
+    while (peek().type === 'LBRACKET') {
+      consume() // consume [
+      let start: number | undefined = undefined
+      let end: number | undefined = undefined
+
+      if (peek().type === 'NUMBER') {
+        start = parseInt(consume().value, 10)
+      }
+
+      if (peek().type === 'COLON') {
+        consume() // consume :
+        if (peek().type === 'NUMBER') {
+          end = parseInt(consume().value, 10)
+        }
+      } else {
+        // If someone wrote [40] instead of [:40], treat as limit 40
+        end = start
+        start = 0
+      }
+
+      if (peek().type === 'RBRACKET') {
+        consume() // consume ]
+      }
+
+      child = { type: 'SLICE', child, start, end }
+    }
+
+    return child
+  }
+
+  // 3. PrimarySet := RANDOM '(' SetQuery ',' NUMBER [',' NUMBER] ')' | '(' SetQuery ')' | BooleanFilter
+  function parsePrimarySet(): SetQueryNode | null {
+    const t = peek()
+
+    // RANDOM(subquery, count, seed?)
+    if (t.type === 'RANDOM') {
+      consume() // consume RANDOM
+      if (peek().type !== 'LPAREN') return null
+      consume() // consume (
+
+      const child = parseUnion()
+      if (!child) return null
+
+      if (peek().type !== 'COMMA') return null
+      consume() // consume ,
+
+      if (peek().type !== 'NUMBER') return null
+      const count = parseInt(consume().value, 10)
+
+      let seed: number | undefined = undefined
+      if (peek().type === 'COMMA') {
+        consume() // consume ,
+        if (peek().type === 'NUMBER') {
+          seed = parseInt(consume().value, 10)
+        }
+      }
+
+      if (peek().type === 'RPAREN') {
+        consume() // consume )
+      }
+
+      return { type: 'RANDOM', child, count, seed }
+    }
+
+    // Parenthesized expression: check if it wraps a multi-set query
+    if (t.type === 'LPAREN') {
+      const savedPos = pos
+      consume() // consume (
+      const inner = parseUnion()
+      if (inner && inner.type !== 'FILTER' && peek().type === 'RPAREN') {
+        consume() // consume )
+        return inner
+      }
+      // If inner has no set operations, backtrack so parseBooleanAST handles full boolean logic
+      pos = savedPos
+    }
+
+    // Boolean filter
+    const ast = parseBooleanAST()
+    if (ast) {
+      return { type: 'FILTER', ast }
+    }
+
+    return null
+  }
+
+  // Parse boolean AST up to set boundaries (UNION, LBRACKET, COMMA, EOF)
+  function parseBooleanAST(): ASTNode | null {
+    function parseOr(): ASTNode | null {
+      let left = parseAnd()
+      if (!left) return null
+
+      while (peek().type === 'OR') {
+        consume()
+        const right = parseAnd()
+        if (!right) break
+        left = { type: 'OR', left, right }
+      }
+
+      return left
+    }
+
+    function parseAnd(): ASTNode | null {
+      let left = parseUnary()
+      if (!left) return null
+
+      while (true) {
+        const p = peek()
+        if (
+          p.type === 'OR' ||
+          p.type === 'RPAREN' ||
+          p.type === 'EOF' ||
+          p.type === 'UNION' ||
+          p.type === 'LBRACKET' ||
+          p.type === 'COMMA'
+        ) {
+          break
+        }
+
+        if (p.type === 'AND') {
+          consume()
+        }
+
+        const right = parseUnary()
+        if (!right) break
+        left = { type: 'AND', left, right }
+      }
+
+      return left
+    }
+
+    function parseUnary(): ASTNode | null {
+      if (peek().type === 'NOT') {
+        consume()
+        const child = parseUnary()
+        if (!child) return null
+        return { type: 'NOT', child }
+      }
+      return parsePrimary()
+    }
+
+    function parsePrimary(): ASTNode | null {
+      const p = peek()
+
+      if (p.type === 'LPAREN') {
+        consume()
+        const expr = parseOr()
+        if (peek().type === 'RPAREN') {
+          consume()
+        }
+        return expr
+      }
+
+      if (p.type === 'DIRECTIVE') {
+        consume()
+        return {
+          type: 'DIRECTIVE',
+          field: p.field!,
+          value: p.value,
+        }
+      }
+
+      if (p.type === 'TEXT' || p.type === 'NUMBER') {
+        consume()
+        return {
+          type: 'TEXT',
+          query: p.value,
+        }
+      }
+
+      return null
+    }
+
+    return parseOr()
+  }
+
+  try {
+    return parseUnion()
+  } catch {
+    return null
+  }
+}
+
+// ─── PRNG & Shuffle Utilities ─────────────────────────────────────────────────
+
+function hashStringToNumber(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i)
+    hash |= 0
+  }
+  return Math.abs(hash)
+}
+
+function mulberry32(seed: number) {
+  return function() {
+    let t = seed += 0x6D2B79F5
+    t = Math.imul(t ^ t >>> 15, t | 1)
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61)
+    return ((t ^ t >>> 14) >>> 0) / 4294967296
+  }
+}
+
+function seededShuffle<T>(array: T[], seed: number): T[] {
+  const arr = [...array]
+  const rng = mulberry32(seed)
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    const temp = arr[i]
+    arr[i] = arr[j]
+    arr[j] = temp
+  }
+  return arr
+}
+
+// ─── Query Evaluators ─────────────────────────────────────────────────────────
 
 export function evaluateQueryAST(
   node: ASTNode | null,
@@ -324,6 +614,67 @@ export function evaluateQueryAST(
 
     default:
       return true
+  }
+}
+
+export function executeSetQuery(
+  node: SetQueryNode | null,
+  allQuestions: Question[],
+  tagMap: Map<string, Tag>,
+  projectMap: Map<string, Project>,
+  sessionSeed?: number | string
+): Question[] {
+  if (!node) return allQuestions
+
+  switch (node.type) {
+    case 'FILTER':
+      return allQuestions.filter(q => evaluateQueryAST(node.ast, q, tagMap, projectMap))
+
+    case 'SLICE': {
+      const list = executeSetQuery(node.child, allQuestions, tagMap, projectMap, sessionSeed)
+      const start = node.start ?? 0
+      const end = node.end !== undefined ? node.end : list.length
+      return list.slice(start, end)
+    }
+
+    case 'RANDOM': {
+      const list = executeSetQuery(node.child, allQuestions, tagMap, projectMap, sessionSeed)
+      let seedNum: number
+      if (node.seed !== undefined) {
+        seedNum = node.seed
+      } else if (typeof sessionSeed === 'number') {
+        seedNum = sessionSeed
+      } else if (typeof sessionSeed === 'string') {
+        seedNum = hashStringToNumber(sessionSeed)
+      } else {
+        seedNum = 42
+      }
+      const shuffled = seededShuffle(list, seedNum)
+      return shuffled.slice(0, Math.max(0, node.count))
+    }
+
+    case 'UNION': {
+      const left = executeSetQuery(node.left, allQuestions, tagMap, projectMap, sessionSeed)
+      const right = executeSetQuery(node.right, allQuestions, tagMap, projectMap, sessionSeed)
+      const seen = new Set<string>()
+      const result: Question[] = []
+      for (const q of left) {
+        if (!seen.has(q.id)) {
+          seen.add(q.id)
+          result.push(q)
+        }
+      }
+      for (const q of right) {
+        if (!seen.has(q.id)) {
+          seen.add(q.id)
+          result.push(q)
+        }
+      }
+      return result
+    }
+
+    default:
+      return allQuestions
   }
 }
 
@@ -433,7 +784,6 @@ export function tryExtractFilterState(
         const id = projByName.get(val)
         if (id) projectIds.add(id)
         else {
-          // partial search
           const found = projects.find(p => p.name.toLowerCase().includes(val))
           if (found) projectIds.add(found.id)
         }
@@ -489,12 +839,9 @@ export function getAutocompletions(
   const left = query.slice(0, cursor)
 
   // 1. Check if cursor is inside or right after a directive:
-  // e.g. "@", "@proj", "@project:", "@project: ", "@project:PW", "@project:\"PW", "@tag:", etc.
-  // Find the last '@' before cursor
   const lastAtIndex = left.lastIndexOf('@')
   if (lastAtIndex !== -1) {
     const afterAt = left.slice(lastAtIndex)
-    // Match an uncompleted directive at cursor (no spaces before colon)
     const directiveMatch = afterAt.match(/^@([a-z]*)(?::\s*(["']?)([^"'\s]*))?$/i)
     if (directiveMatch) {
       const fieldPrefix = directiveMatch[1].toLowerCase()
@@ -502,19 +849,17 @@ export function getAutocompletions(
       const valPrefix = (directiveMatch[3] || '').trim().toLowerCase()
       const tokenStart = lastAtIndex
 
-      // If colon hasn't been typed yet: suggest directive names
       if (!hasColon) {
         const directives: AutocompleteItem[] = [
           { label: '@project:', insertText: '@project:', type: 'directive', description: 'Filter by project' },
-          { label: '@status:', insertText: '@status:', type: 'directive', description: 'Filter by status (wrong, partial...)' },
-          { label: '@difficulty:', insertText: '@difficulty:', type: 'directive', description: 'Filter by difficulty (easy, hard...)' },
+          { label: '@status:', insertText: '@status:', type: 'directive', description: 'Filter by status' },
+          { label: '@difficulty:', insertText: '@difficulty:', type: 'directive', description: 'Filter by difficulty' },
           { label: '@tag:', insertText: '@tag:', type: 'directive', description: 'Filter by question tag' },
         ]
         const filtered = directives.filter(d => d.label.toLowerCase().startsWith('@' + fieldPrefix))
         return { items: filtered, replaceRange: [tokenStart, cursor] }
       }
 
-      // Colon has been typed: suggest values for the specific field
       if (fieldPrefix.startsWith('proj')) {
         const items: AutocompleteItem[] = projects
           .filter(p => !valPrefix || p.name.toLowerCase().includes(valPrefix))
@@ -589,11 +934,15 @@ export function getAutocompletions(
     if (hasPriorTerms) {
       items.push(
         { label: 'AND', insertText: 'AND ', type: 'operator', description: 'Intersection' },
-        { label: 'OR', insertText: 'OR ', type: 'operator', description: 'Union' },
+        { label: 'OR', insertText: 'OR ', type: 'operator', description: 'Union condition' },
+        { label: 'UNION', insertText: 'UNION ', type: 'operator', description: 'Combine query sets (deduplicated)' },
+        { label: 'join', insertText: 'join ', type: 'operator', description: 'Combine query sets' },
+        { label: '[:40]', insertText: '[:40] ', type: 'operator', description: 'Slice first 40 questions' },
       )
     }
 
     items.push(
+      { label: 'random(', insertText: 'random(', type: 'operator', description: 'Random sample: random(query, count, seed?)' },
       { label: 'NOT', insertText: 'NOT ', type: 'operator', description: 'Negation' },
       { label: '@project:', insertText: '@project:', type: 'directive', description: 'Filter by project' },
       { label: '@status:', insertText: '@status:', type: 'directive', description: 'Filter by status' },
@@ -604,17 +953,20 @@ export function getAutocompletions(
     return { items, replaceRange: [cursor, cursor] }
   }
 
-  // 3. If typing an operator or word like "AN", "OR", "NO" at the end:
-  const wordMatch = left.match(/(?:^|\s|\()([a-z]+)$/i)
+  // 3. If typing an operator or keyword at the end:
+  const wordMatch = left.match(/(?:^|\s|\()([a-z0-9_:[\]]+)$/i)
   if (wordMatch) {
     const word = wordMatch[1].toUpperCase()
     const tokenStart = cursor - wordMatch[1].length
     const operators: AutocompleteItem[] = [
       { label: 'AND', insertText: 'AND ', type: 'operator', description: 'Intersection' },
-      { label: 'OR', insertText: 'OR ', type: 'operator', description: 'Union' },
+      { label: 'OR', insertText: 'OR ', type: 'operator', description: 'Union condition' },
+      { label: 'UNION', insertText: 'UNION ', type: 'operator', description: 'Combine query sets' },
+      { label: 'join', insertText: 'join ', type: 'operator', description: 'Combine query sets' },
+      { label: 'random(', insertText: 'random(', type: 'operator', description: 'Random sample: random(query, count, seed?)' },
       { label: 'NOT', insertText: 'NOT ', type: 'operator', description: 'Negation' },
     ]
-    const matchedOps = operators.filter(op => op.label.startsWith(word))
+    const matchedOps = operators.filter(op => op.label.toUpperCase().startsWith(word))
     if (matchedOps.length > 0) {
       return { items: matchedOps, replaceRange: [tokenStart, cursor] }
     }

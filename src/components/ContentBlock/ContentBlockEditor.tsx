@@ -2,12 +2,13 @@ import { useRef, useCallback } from 'react'
 import { v4 as uuid } from 'uuid'
 import {
   Plus, Trash2, ChevronUp, ChevronDown,
-  ImagePlus, Type, Eye, EyeOff, AlignLeft
+  ImagePlus, Type, Eye, EyeOff, AlignLeft, Crop
 } from 'lucide-react'
 import { useState } from 'react'
 import type { ContentBlock, Segment, MarkdownSegment, ImageSegment } from '../../types'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ImageSegmentViewer } from './ImageSegmentViewer'
+import { ImageCropper } from './ImageCropper'
 import { storeImage } from '../../db/images'
 import { Button, SectionLabel } from '../UI'
 
@@ -19,6 +20,7 @@ interface Props {
 
 export function ContentBlockEditor({ block, onChange, label }: Props) {
   const [previewModes, setPreviewModes] = useState<Record<string, boolean>>({})
+  const [croppingSegId, setCroppingSegId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [pendingImageSegId, setPendingImageSegId] = useState<string | null>(null)
 
@@ -153,15 +155,50 @@ export function ContentBlockEditor({ block, onChange, label }: Props) {
                   />
             ) : (
               <div className="space-y-2">
-                <ImageSegmentViewer
-                  imageId={seg.imageId}
-                  caption={seg.caption}
-                  displayWidth={seg.displayWidth}
-                />
+                {croppingSegId === seg.id ? (
+                  <ImageCropper
+                    imageId={seg.imageId}
+                    crop={seg.crop}
+                    onApply={newCrop => {
+                      updateImageMeta(seg.id, { crop: newCrop })
+                      setCroppingSegId(null)
+                    }}
+                    onReset={() => {
+                      updateImageMeta(seg.id, { crop: undefined })
+                      setCroppingSegId(null)
+                    }}
+                    onCancel={() => setCroppingSegId(null)}
+                  />
+                ) : (
+                  <ImageSegmentViewer
+                    imageId={seg.imageId}
+                    caption={seg.caption}
+                    displayWidth={seg.displayWidth}
+                    crop={seg.crop}
+                  />
+                )}
                 <div className="flex gap-2 flex-wrap items-center pt-1">
                   <Button size="sm" variant="ghost" icon={<ImagePlus size={12}/>} onClick={() => addImageSegment(seg.id)}>
                     Replace
                   </Button>
+                  <Button
+                    size="sm"
+                    variant={seg.crop ? "primary" : "ghost"}
+                    icon={<Crop size={12}/>}
+                    onClick={() => setCroppingSegId(s => s === seg.id ? null : seg.id)}
+                  >
+                    {croppingSegId === seg.id ? 'Close Crop' : seg.crop ? 'Edit Crop' : 'Crop'}
+                  </Button>
+                  {seg.crop && (
+                    <button
+                      type="button"
+                      onClick={() => updateImageMeta(seg.id, { crop: undefined })}
+                      className="text-[11px] text-[var(--text-muted)] hover:text-rose-400 transition-colors px-1 underline"
+                      title="Reset to full image"
+                    >
+                      Reset Crop
+                    </button>
+                  )}
                   <input
                     type="text"
                     placeholder="Caption (optional)"

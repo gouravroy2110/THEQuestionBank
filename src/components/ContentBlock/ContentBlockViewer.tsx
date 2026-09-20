@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function ContentBlockViewer({ block }: Props) {
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<{ url: string; crop?: any } | null>(null)
 
   if (!block.segments.length) {
     return <span className="text-[var(--text-muted)] italic text-sm">No content</span>
@@ -25,12 +25,19 @@ export function ContentBlockViewer({ block }: Props) {
               imageId={seg.imageId}
               caption={seg.caption}
               displayWidth={seg.displayWidth}
-              onLightbox={setLightboxUrl}
+              crop={seg.crop}
+              onLightbox={url => setLightbox({ url, crop: seg.crop })}
             />
           )}
         </div>
       ))}
-      {lightboxUrl && <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
+      {lightbox && (
+        <ImageLightbox
+          url={lightbox.url}
+          crop={lightbox.crop}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   )
 }

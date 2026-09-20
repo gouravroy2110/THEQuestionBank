@@ -3,7 +3,9 @@ import { Search, X, Sparkles, CornerDownLeft, Command, HelpCircle } from 'lucide
 import type { Question, Tag, Project, FilterState } from '../../types'
 import {
   parseQuery,
+  parseSetQuery,
   evaluateQueryAST,
+  executeSetQuery,
   serializeFilterToQuery,
   tryExtractFilterState,
   getAutocompletions,
@@ -79,10 +81,10 @@ export function SpotlightSearchModal({
   // Live match count
   const matchCount = useMemo(() => {
     if (!query.trim()) return questions.length
-    const ast = parseQuery(query)
-    if (!ast) return questions.length
-    return questions.filter(q => evaluateQueryAST(ast, q, tagMap, projectMap)).length
-  }, [query, questions, tagMap, projectMap])
+    const setNode = parseSetQuery(query)
+    if (!setNode) return questions.length
+    return executeSetQuery(setNode, questions, tagMap, projectMap, filter.randomSeed).length
+  }, [query, questions, tagMap, projectMap, filter.randomSeed])
 
   if (!isOpen) return null
 
@@ -213,7 +215,7 @@ export function SpotlightSearchModal({
             ref={textareaRef}
             rows={1}
             className="flex-1 bg-transparent text-[var(--text-primary)] placeholder-[var(--text-muted)] text-base font-mono outline-none border-none resize-none leading-relaxed overflow-y-auto max-h-36 pr-2 py-0"
-            placeholder="Type query or @project: @status: @difficulty: @tag: AND OR..."
+            placeholder="Type query e.g. @project:P1 UNION @project:P2 or random(@project:P1, 20, 42) or [:40]..."
             value={query}
             onChange={handleInputChange}
             onSelect={handleInputSelect}

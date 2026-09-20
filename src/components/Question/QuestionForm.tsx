@@ -5,6 +5,7 @@ import type { Question, Project } from '../../types'
 import { saveQuestion } from '../../db/questions'
 import { db } from '../../db/schema'
 import { ContentBlockEditor } from '../ContentBlock/ContentBlockEditor'
+import { OptionsEditor } from './OptionsEditor'
 import { TagInput } from '../Tags/TagInput'
 import { TagManager } from '../Tags/TagManager'
 import { MetaEditor } from '../Metadata/MetaEditor'
@@ -136,6 +137,20 @@ export function QuestionForm({ question, onSaved, onChanged }: Props) {
             />
           </div>
         </div>
+
+        {/* ── Options & Answering ── */}
+        <OptionsEditor
+          questionType={form.questionType ?? 'none'}
+          options={form.options ?? []}
+          correctAnswer={form.correctAnswer}
+          onChange={data =>
+            update({
+              questionType: data.questionType,
+              options: data.options,
+              correctAnswer: data.correctAnswer,
+            })
+          }
+        />
 
         {/* ── Solution ── */}
         <div className="space-y-2">

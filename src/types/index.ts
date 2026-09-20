@@ -13,12 +13,20 @@ export interface MarkdownSegment {
   text: string;
 }
 
+export interface ImageCrop {
+  x: number;      // 0–100 % from left
+  y: number;      // 0–100 % from top
+  width: number;  // 0–100 % width
+  height: number; // 0–100 % height
+}
+
 export interface ImageSegment {
   type: 'image';
   id: UUID;
   imageId: UUID;
   caption?: string;
   displayWidth?: number; // percent of container, 10–100
+  crop?: ImageCrop;
 }
 
 export type Segment = MarkdownSegment | ImageSegment;
@@ -58,6 +66,26 @@ export interface Project {
   updatedAt: number;
 }
 
+// ─── Question Types & Options ──────────────────────────────────────────────────
+
+export type QuestionType = 'none' | 'mcq' | 'msq' | 'nat';
+
+export interface QuestionOption {
+  id: string;
+  text: string;
+}
+
+export interface NatAnswer {
+  value?: number;
+  min?: number;
+  max?: number;
+}
+
+export type CorrectAnswer =
+  | { type: 'mcq'; optionId: string }
+  | { type: 'msq'; optionIds: string[] }
+  | { type: 'nat'; answer: NatAnswer };
+
 // ─── Question ────────────────────────────────────────────────────────────────
 
 export interface Question {
@@ -72,6 +100,11 @@ export interface Question {
   source: string;
   createdAt: number;
   updatedAt: number;
+
+  // Answering Mechanism
+  questionType?: QuestionType;
+  options?: QuestionOption[];
+  correctAnswer?: CorrectAnswer;
 }
 
 // ─── Image Record ─────────────────────────────────────────────────────────────
@@ -119,4 +152,5 @@ export interface FilterState {
   sortBy: 'createdAt' | 'updatedAt' | 'status' | 'difficulty' | 'smart';
   sortDir: 'asc' | 'desc';
   rawQuery?: string;
+  randomSeed?: number | string;
 }
