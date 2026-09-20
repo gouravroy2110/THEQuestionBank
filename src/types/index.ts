@@ -109,6 +109,7 @@ export type SyncMessage =
 
 export interface FilterState {
   projectId: UUID | 'all';
+  projectIds: UUID[];
   statuses: Status[];
   difficulties: Difficulty[];
   tagIds: UUID[];
@@ -117,4 +118,5 @@ export interface FilterState {
   metaFilters: MetaField[];
   sortBy: 'createdAt' | 'updatedAt' | 'status' | 'difficulty' | 'smart';
   sortDir: 'asc' | 'desc';
+  rawQuery?: string;
 }

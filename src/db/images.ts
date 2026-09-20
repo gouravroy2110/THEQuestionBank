@@ -18,7 +18,7 @@ export async function requestImageDirPermission(): Promise<'granted' | 'denied' 
   const handle = await getImageDirHandle();
   if (!handle) return 'no-handle';
   try {
-    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    const perm = await (handle as any).requestPermission({ mode: 'readwrite' });
     return perm === 'granted' ? 'granted' : 'denied';
   } catch {
     return 'denied';

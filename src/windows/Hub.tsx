@@ -50,12 +50,12 @@ export default function Hub() {
 
   const openEditor = (projectId?: string) => {
     const url = `${window.location.origin}${window.location.pathname}?window=editor${projectId ? `&project=${projectId}` : ''}`
-    window.open(url, '_blank', 'width=1100,height=800')
+    window.open(url, 'mockbank_editor')
   }
 
   const openViewer = (projectId?: string) => {
     const url = `${window.location.origin}${window.location.pathname}?window=viewer${projectId ? `&project=${projectId}` : ''}`
-    window.open(url, '_blank', 'width=1200,height=850')
+    window.open(url, 'mockbank_viewer')
   }
 
   const handleDelete = async () => {

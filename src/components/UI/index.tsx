@@ -81,14 +81,16 @@ interface TagChipProps {
   onRemove?: () => void
   dimmed?: boolean
   size?: 'sm' | 'md'
+  title?: string
 }
 
-export function TagChip({ name, color, onRemove, dimmed, size = 'md' }: TagChipProps) {
+export function TagChip({ name, color, onRemove, dimmed, size = 'md', title }: TagChipProps) {
   const bg = `${color}22`
   const border = `${color}55`
   const text = color
   return (
     <span
+      title={title}
       className={`inline-flex items-center gap-1 rounded-full border font-medium transition-opacity ${size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-xs'} ${dimmed ? 'opacity-50' : ''}`}
       style={{ background: bg, borderColor: border, color: text }}
     >

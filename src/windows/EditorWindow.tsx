@@ -140,7 +140,7 @@ export default function EditorWindow() {
             </button>
           )}
           <button
-            onClick={() => window.open(window.location.origin + window.location.pathname, '_blank')}
+            onClick={() => window.open(window.location.origin + window.location.pathname, 'mockbank_hub')}
             className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)] transition-colors"
             title="Open Hub"
           >

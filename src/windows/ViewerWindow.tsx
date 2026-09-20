@@ -2,19 +2,21 @@ import { useState, useEffect, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   Eye, PanelLeftClose, PanelLeftOpen, LayoutGrid,
-  LayoutDashboard, ExternalLink, LayoutList
+  LayoutDashboard, ExternalLink, LayoutList, Sparkles
 } from 'lucide-react'
 import { db } from '../db/schema'
 import type { Question, Tag, Project, FilterState, ResolvedQuestion, MetaField } from '../types'
 import { QuestionDetail } from '../components/Question/QuestionDetail'
 import { QuestionCard } from '../components/Question/QuestionCard'
 import { FilterPanel } from '../components/Layout/FilterPanel'
+import { SpotlightSearchModal } from '../components/Layout/SpotlightSearchModal'
 import { EmptyState, Spinner } from '../components/UI'
 import { useBroadcast, broadcast } from '../hooks/useBroadcast'
 import { useFilter } from '../hooks/useFilter'
 
 const DEFAULT_FILTER: FilterState = {
   projectId: 'all',
+  projectIds: [],
   statuses: [],
   difficulties: [],
   tagIds: [],
@@ -39,9 +41,11 @@ export default function ViewerWindow() {
   const [filter, setFilter] = useState<FilterState>({
     ...DEFAULT_FILTER,
     projectId: initProject ?? 'all',
+    projectIds: initProject ? [initProject] : [],
   })
   const [activeIndex, setActiveIndex] = useState(0)
   const [filterOpen, setFilterOpen]   = useState(true)
+  const [spotlightOpen, setSpotlightOpen] = useState(false)
   const [listMode, setListMode]       = useState<'strip' | 'grid'>('strip')
 
   // Apply filters
@@ -70,7 +74,7 @@ export default function ViewerWindow() {
     const url = `${window.location.origin}${window.location.pathname}?window=editor${
       activeQuestion ? `&project=${activeQuestion.projectId ?? ''}` : ''
     }`
-    const w = window.open(url, '_blank', 'width=1100,height=800')
+    const w = window.open(url, 'mockbank_editor')
     if (activeQuestion && w) {
       // Brief delay so editor has time to mount
       setTimeout(() => {
@@ -82,6 +86,16 @@ export default function ViewerWindow() {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Toggle spotlight on Tab
+      if (e.key === 'Tab') {
+        const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
+        if (!isInput) {
+          e.preventDefault()
+          setSpotlightOpen(o => !o)
+          return
+        }
+      }
+
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (e.key === 'f' || e.key === 'F') setFilterOpen(o => !o)
     }
@@ -111,6 +125,18 @@ export default function ViewerWindow() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSpotlightOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[var(--accent-dim)] transition-colors"
+            title="Spotlight Search & SQL Filter [Tab]"
+          >
+            <Sparkles size={13} className="text-[var(--accent)]" />
+            <span className="font-medium">Spotlight</span>
+            <kbd className="text-[10px] font-mono px-1 py-0.2 rounded bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-muted)]">
+              Tab
+            </kbd>
+          </button>
+
           <div className="flex rounded-lg border border-[var(--border)] overflow-hidden">
             <button
               onClick={() => setListMode('strip')}
@@ -128,7 +154,7 @@ export default function ViewerWindow() {
             </button>
           </div>
           <button
-            onClick={() => window.open(window.location.origin + window.location.pathname, '_blank')}
+            onClick={() => window.open(window.location.origin + window.location.pathname, 'mockbank_hub')}
             className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)] transition-colors"
             title="Open Hub"
           >
@@ -236,6 +262,18 @@ export default function ViewerWindow() {
           )}
         </div>
       </div>
+
+      <SpotlightSearchModal
+        isOpen={spotlightOpen}
+        onClose={() => setSpotlightOpen(false)}
+        filter={filter}
+        onApplyFilter={setFilter}
+        projects={allProjects}
+        tags={allTags}
+        questions={allQuestions}
+        tagMap={tagMap}
+        projectMap={projectMap}
+      />
     </div>
   )
 }

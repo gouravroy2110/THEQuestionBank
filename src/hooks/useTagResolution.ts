@@ -4,7 +4,11 @@ import type { Question, ResolvedQuestion, Tag, MetaField } from '../types';
 
 export function useResolvedQuestion(question: Question | null): ResolvedQuestion | null {
   const project = useLiveQuery(
-    () => question?.projectId ? db.projects.get(question.projectId) : Promise.resolve(undefined),
+    async () => {
+      if (!question?.projectId) return null;
+      const p = await db.projects.get(question.projectId);
+      return p ?? null;
+    },
     [question?.projectId],
   );
 

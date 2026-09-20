@@ -32,7 +32,44 @@ export function FilterPanel({ filter, onChange, total }: Props) {
     ? allTags.filter((t: any) => t.name.toLowerCase().includes(tagSearch.toLowerCase()))
     : allTags
 
-  const set = (patch: Partial<FilterState>) => onChange({ ...filter, ...patch })
+  const activeProjectIds = (filter.projectIds && filter.projectIds.length > 0)
+    ? filter.projectIds
+    : (filter.projectId && filter.projectId !== 'all')
+    ? [filter.projectId]
+    : []
+
+  const isAllProjects = activeProjectIds.length === 0
+
+  const toggleProject = (id: string, e: React.MouseEvent) => {
+    const isMulti = e.ctrlKey || e.metaKey || e.shiftKey
+    let next: string[]
+
+    if (isMulti) {
+      next = activeProjectIds.includes(id)
+        ? activeProjectIds.filter(x => x !== id)
+        : [...activeProjectIds, id]
+    } else {
+      next = activeProjectIds.length === 1 && activeProjectIds[0] === id ? [] : [id]
+    }
+
+    onChange({
+      ...filter,
+      projectIds: next,
+      projectId: next.length === 1 ? next[0] : next.length === 0 ? 'all' : (next[0] as any),
+      rawQuery: undefined,
+    })
+  }
+
+  const selectAllProjects = () => {
+    onChange({
+      ...filter,
+      projectIds: [],
+      projectId: 'all',
+      rawQuery: undefined,
+    })
+  }
+
+  const set = (patch: Partial<FilterState>) => onChange({ ...filter, rawQuery: undefined, ...patch })
 
   const toggleStatus = (s: typeof STATUSES[number]) => {
     const list = filter.statuses.includes(s)
@@ -56,20 +93,41 @@ export function FilterPanel({ filter, onChange, total }: Props) {
   }
 
   const clearAll = () => onChange({
-    projectId: 'all', statuses: [], difficulties: [], tagIds: [],
+    projectId: 'all', projectIds: [], statuses: [], difficulties: [], tagIds: [],
     tagMode: 'and', textSearch: '', metaFilters: [], sortBy: 'createdAt', sortDir: 'desc',
+    rawQuery: undefined,
   })
 
   const activeCount = [
-    filter.projectId !== 'all',
+    activeProjectIds.length > 0,
     filter.statuses.length > 0,
     filter.difficulties.length > 0,
     filter.tagIds.length > 0,
     filter.textSearch.length > 0,
+    !!filter.rawQuery,
   ].filter(Boolean).length
 
   return (
     <div className="flex flex-col gap-5 px-4 py-4 h-full overflow-y-auto">
+      {/* Spotlight query banner if raw query is active */}
+      {filter.rawQuery && (
+        <div className="p-2.5 rounded-lg bg-[var(--accent-dim)] border border-[var(--accent)]/40 text-xs flex flex-col gap-1">
+          <div className="flex items-center justify-between text-[var(--accent)] font-semibold">
+            <span>Spotlight Query Active</span>
+            <button
+              onClick={() => onChange({ ...filter, rawQuery: undefined })}
+              className="hover:text-rose-400 text-[10px]"
+            >
+              Reset
+            </button>
+          </div>
+          <div className="font-mono text-[11px] text-[var(--text-secondary)] truncate" title={filter.rawQuery}>
+            {filter.rawQuery}
+          </div>
+          <div className="text-[10px] text-[var(--text-muted)]">Press [Tab] to modify query</div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -102,20 +160,28 @@ export function FilterPanel({ filter, onChange, total }: Props) {
 
       {/* Project */}
       <div>
-        <SectionLabel>Project</SectionLabel>
-        <div className="mt-1.5 space-y-1">
+        <div className="flex items-center justify-between">
+          <SectionLabel>Project</SectionLabel>
+          {activeProjectIds.length > 1 && (
+            <span className="text-[10px] text-[var(--accent)] font-medium">
+              {activeProjectIds.length} selected
+            </span>
+          )}
+        </div>
+        <p className="text-[10px] text-[var(--text-muted)] mb-1.5">Ctrl+Click to select multiple</p>
+        <div className="space-y-1">
           <FilterOption
             label="All Projects"
-            active={filter.projectId === 'all'}
-            onClick={() => set({ projectId: 'all' })}
+            active={isAllProjects}
+            onClick={selectAllProjects}
           />
           {projects.map(p => (
             <FilterOption
               key={p.id}
               label={p.name}
               color={p.color}
-              active={filter.projectId === p.id}
-              onClick={() => set({ projectId: p.id })}
+              active={activeProjectIds.includes(p.id)}
+              onClick={e => toggleProject(p.id, e)}
             />
           ))}
         </div>
@@ -236,7 +302,7 @@ export function FilterPanel({ filter, onChange, total }: Props) {
 }
 
 function FilterOption({ label, color, active, onClick }: {
-  label: string; color?: string; active: boolean; onClick: () => void
+  label: string; color?: string; active: boolean; onClick: (e: React.MouseEvent) => void
 }) {
   return (
     <button

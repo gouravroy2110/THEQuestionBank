@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { Question, FilterState, Tag, Project } from '../types'
+import { parseQuery, evaluateQueryAST } from '../utils/queryParser'
 
 const STATUS_ORDER: Record<string,number> = { wrong:0, partial:1, unattempted:2, correct:3 }
 const DIFF_ORDER:   Record<string,number> = { unseen:0, hard:1, medium:2, easy:3 }
@@ -13,15 +14,27 @@ export function useFilter(
   return useMemo(() => {
     let qs = [...questions]
 
-    // Project
-    if (filter.projectId !== 'all') {
-      qs = qs.filter(q => q.projectId === filter.projectId)
-    }
+    // If a raw SQL-like query is provided, evaluate via AST
+    if (filter.rawQuery?.trim()) {
+      const ast = parseQuery(filter.rawQuery)
+      if (ast) {
+        qs = qs.filter(q => evaluateQueryAST(ast, q, tagMap, projectMap))
+      }
+    } else {
+      // Standard filter pipeline
 
-    // Status
-    if (filter.statuses.length > 0) {
-      qs = qs.filter(q => filter.statuses.includes(q.status))
-    }
+      // Multi-project selection
+      if (filter.projectIds && filter.projectIds.length > 0) {
+        const idSet = new Set(filter.projectIds)
+        qs = qs.filter(q => q.projectId && idSet.has(q.projectId))
+      } else if (filter.projectId && filter.projectId !== 'all') {
+        qs = qs.filter(q => q.projectId === filter.projectId)
+      }
+
+      // Status
+      if (filter.statuses.length > 0) {
+        qs = qs.filter(q => filter.statuses.includes(q.status))
+      }
 
     // Difficulty
     if (filter.difficulties.length > 0) {
@@ -68,6 +81,7 @@ export function useFilter(
           m.value.toLowerCase().includes(mf.value.toLowerCase())
         )
       })
+    }
     }
 
     // Sort
