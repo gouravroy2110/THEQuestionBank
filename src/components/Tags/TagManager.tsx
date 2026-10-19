@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Trash2, Pencil, Check, X, Plus, Search, Tag as TagIcon, CornerDownRight, FolderTree } from 'lucide-react'
+import { Trash2, Pencil, Check, X, Plus, Search, Tag as TagIcon, CornerDownRight, FolderTree, ExternalLink } from 'lucide-react'
 import { db } from '../../db/schema'
 import { createTag, updateTag, deleteTag, countTagUsage, TAG_PALETTE } from '../../db/tags'
 import { getActiveWorkspaceId } from '../../db/workspaces'
@@ -134,6 +134,19 @@ export function TagManager({ open, onClose, workspaceId }: Props) {
             >
               {showAddForm ? 'Cancel' : 'New Tag'}
             </Button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const url = `${window.location.origin}${window.location.pathname}?window=tags&workspace=${activeWsId}`
+                window.open(url, 'mockbank_tags')
+                onClose()
+              }}
+              className="p-1.5 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors"
+              title="Open Full Tag Hierarchy Editor Window"
+            >
+              <ExternalLink size={13} />
+            </button>
           </div>
 
           {/* New Tag Creation Card */}
