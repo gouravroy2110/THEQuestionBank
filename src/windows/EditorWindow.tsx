@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { db } from '../db/schema'
 import { newQuestion, saveQuestion, deleteQuestion } from '../db/questions'
-import { getAllTags } from '../db/tags'
+import { getActiveWorkspaceId } from '../db/workspaces'
 import type { Question, Tag, Project } from '../types'
 import { QuestionForm } from '../components/Question/QuestionForm'
 import { QuestionCard } from '../components/Question/QuestionCard'
@@ -15,13 +15,45 @@ import { useBroadcast, broadcast } from '../hooks/useBroadcast'
 import { useImageStore } from '../hooks/useImageStore'
 
 export default function EditorWindow() {
-  // Read ?project= param from URL
-  const params      = new URLSearchParams(window.location.search)
-  const initProject = params.get('project') ?? null
+  // Read ?project= and ?workspace= param from URL
+  const params        = new URLSearchParams(window.location.search)
+  const initProject   = params.get('project') ?? null
+  const initWorkspace = params.get('workspace') ?? null
 
-  const allQuestions = useLiveQuery(() => db.questions.orderBy('updatedAt').reverse().toArray(), []) ?? []
-  const allProjects  = useLiveQuery(() => db.projects.toArray(), []) ?? []
-  const allTags      = useLiveQuery(() => db.tags.toArray(), []) ?? []
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(initWorkspace)
+
+  useEffect(() => {
+    if (!currentWorkspaceId) {
+      getActiveWorkspaceId().then(id => setCurrentWorkspaceId(id))
+    }
+  }, [currentWorkspaceId])
+
+  const currentWorkspace = useLiveQuery(
+    () => (currentWorkspaceId ? db.workspaces.get(currentWorkspaceId) : undefined),
+    [currentWorkspaceId]
+  )
+
+  const allQuestions = useLiveQuery(
+    () =>
+      currentWorkspaceId
+        ? db.questions.where('workspaceId').equals(currentWorkspaceId).reverse().sortBy('updatedAt')
+        : db.questions.orderBy('updatedAt').reverse().toArray(),
+    [currentWorkspaceId]
+  ) ?? []
+  const allProjects  = useLiveQuery(
+    () =>
+      currentWorkspaceId
+        ? db.projects.where('workspaceId').equals(currentWorkspaceId).toArray()
+        : db.projects.toArray(),
+    [currentWorkspaceId]
+  ) ?? []
+  const allTags      = useLiveQuery(
+    () =>
+      currentWorkspaceId
+        ? db.tags.where('workspaceId').equals(currentWorkspaceId).toArray()
+        : db.tags.toArray(),
+    [currentWorkspaceId]
+  ) ?? []
   const tagMap       = new Map<string, Tag>(allTags.map(t => [t.id, t]))
   const projectMap   = new Map<string, Project>(allProjects.map(p => [p.id, p]))
 
@@ -55,10 +87,13 @@ export default function EditorWindow() {
     }
   }, [sidebarQuestions.length])
 
-  // Listen for navigate:question from viewer
+  // Listen for navigate:question and workspace:switched from other windows
   useBroadcast(msg => {
     if (msg.type === 'navigate:question') {
       navigateTo(msg.payload.id)
+    } else if (msg.type === 'workspace:switched') {
+      setCurrentWorkspaceId(msg.payload.id)
+      setActiveId(null)
     }
   })
 
@@ -68,15 +103,13 @@ export default function EditorWindow() {
   }
 
   const handleNewQuestion = useCallback(() => {
-    const q = newQuestion(activeProjectFilter)
-    // Don't save yet — just set as active draft
+    const q = newQuestion(activeProjectFilter, currentWorkspaceId ?? undefined)
     setActiveId(q.id)
-    // We need to pre-insert so form can work; save immediately as blank
     saveQuestion(q).then(() => {
       broadcast({ type: 'question:saved', payload: { id: q.id, projectId: q.projectId } })
     })
     setDirty(false)
-  }, [activeProjectFilter])
+  }, [activeProjectFilter, currentWorkspaceId])
 
   const handleSaved = useCallback((q: Question) => {
     setActiveId(q.id)
@@ -121,6 +154,11 @@ export default function EditorWindow() {
             <BookOpen size={14} className="text-[var(--accent)]" />
             <span className="font-display font-semibold text-sm text-[var(--text-primary)]">
               Editor
+              {currentWorkspace && (
+                <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-normal border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)]">
+                  {currentWorkspace.name}
+                </span>
+              )}
               {currentProject && (
                 <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">
                   — {currentProject.name}
@@ -152,70 +190,86 @@ export default function EditorWindow() {
         </div>
       </header>
 
+      {/* Main workspace */}
       <div className="flex flex-1 overflow-hidden">
-        {/* ── Sidebar ── */}
+        {/* ── Collapsible question list sidebar ── */}
         {sidebarOpen && (
-          <aside className="w-72 flex-shrink-0 border-r border-[var(--border)] bg-[var(--bg-surface)] flex flex-col overflow-hidden">
-            {/* Project picker */}
-            <div className="px-3 pt-3 pb-2 border-b border-[var(--border)]">
-              <select
-                className="w-full px-2.5 py-1.5 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] cursor-pointer"
-                value={activeProjectFilter ?? ''}
-                onChange={e => setActiveProjectFilter(e.target.value || null)}
-              >
-                <option value="">All Questions</option>
-                {allProjects.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Search */}
-            <div className="px-3 py-2 border-b border-[var(--border)]">
+          <aside className="w-72 border-r border-[var(--border)] bg-[var(--bg-surface)] flex flex-col flex-shrink-0">
+            {/* Search + filter */}
+            <div className="p-3 border-b border-[var(--border)] space-y-2">
               <div className="relative">
-                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"/>
+                <Search size={13} className="absolute left-2.5 top-2.5 text-[var(--text-muted)]" />
                 <input
-                  className="w-full pl-7 pr-3 py-1.5 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none"
+                  className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none"
                   placeholder="Search questions…"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                 />
               </div>
+
+              {/* Project filter dropdown */}
+              {allProjects.length > 0 && (
+                <div className="relative">
+                  <select
+                    className="w-full text-xs px-2.5 py-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg text-[var(--text-muted)] appearance-none cursor-pointer focus:outline-none pr-6"
+                    value={activeProjectFilter ?? ''}
+                    onChange={e => setActiveProjectFilter(e.target.value || null)}
+                  >
+                    <option value="">All Projects</option>
+                    {allProjects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={11} className="absolute right-2 top-2 pointer-events-none text-[var(--text-muted)]" />
+                </div>
+              )}
             </div>
 
-            {/* Count */}
-            <div className="px-3 py-2 flex items-center justify-between">
-              <span className="text-[10px] text-[var(--text-muted)]">
-                {sidebarQuestions.length} question{sidebarQuestions.length !== 1 ? 's' : ''}
-              </span>
+            {/* Questions count */}
+            <div className="px-3 py-1.5 text-[10px] uppercase font-mono tracking-wider text-[var(--text-muted)] border-b border-[var(--border)]">
+              {sidebarQuestions.length} question{sidebarQuestions.length !== 1 ? 's' : ''}
             </div>
 
-            {/* List */}
-            <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
+            {/* Question items */}
+            <div className="flex-1 overflow-y-auto divide-y divide-[var(--border)]">
               {sidebarQuestions.length === 0 ? (
-                <EmptyState
-                  icon={<BookOpen size={24}/>}
-                  title="No questions"
-                  description="Click New to add one"
-                />
+                <div className="p-6 text-center text-xs text-[var(--text-muted)]">
+                  {searchQuery ? 'No matching questions' : 'No questions yet'}
+                </div>
               ) : (
                 sidebarQuestions.map(q => {
-                  const project = q.projectId ? projectMap.get(q.projectId) : undefined
-                  const tags = q.tagIds.map(id => tagMap.get(id)).filter((t): t is Tag => !!t)
+                  const isSelected = q.id === activeId
+                  const seg = q.questionContent.segments.find(s => s.type === 'markdown')
+                  const preview = seg ? (seg as any).text.slice(0, 60) : 'Untitled Question'
                   return (
-                    <div key={q.id} className="group relative">
-                      <QuestionCard
-                        question={q}
-                        tags={tags}
-                        projectColor={project?.color}
-                        active={q.id === activeId}
-                        onClick={() => navigateTo(q.id)}
-                      />
+                    <div
+                      key={q.id}
+                      onClick={() => navigateTo(q.id)}
+                      className={`group flex items-start gap-2 p-3 cursor-pointer transition-colors relative ${
+                        isSelected
+                          ? 'bg-[var(--accent-dim)] border-l-2 border-[var(--accent)]'
+                          : 'hover:bg-[var(--bg-elevated)]'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-xs truncate ${isSelected ? 'font-medium text-[var(--text-primary)]' : 'text-[var(--text-primary)]'}`}>
+                          {preview || 'Empty question'}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-[var(--text-muted)]">{q.status}</span>
+                          {q.source && (
+                            <span className="text-[10px] text-[var(--text-muted)] truncate max-w-[100px]">
+                              · {q.source}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                       <button
                         onClick={e => { e.stopPropagation(); setDeleteTarget(q) }}
-                        className="absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded text-[var(--text-muted)] hover:text-rose-400 hover:bg-rose-500/10 transition-all flex-shrink-0"
+                        title="Delete question"
                       >
-                        <Trash2 size={11}/>
+                        <Trash2 size={12} />
                       </button>
                     </div>
                   )
@@ -231,6 +285,7 @@ export default function EditorWindow() {
             <QuestionForm
               key={activeQuestion.id}
               question={activeQuestion}
+              workspaceId={currentWorkspaceId ?? undefined}
               onSaved={handleSaved}
               onChanged={() => setDirty(true)}
             />

@@ -1,6 +1,7 @@
 import { db } from './schema';
 import type { Tag, UUID } from '../types';
 import { v4 as uuid } from 'uuid';
+import { getActiveWorkspaceId } from './workspaces';
 
 export const TAG_PALETTE = [
   '#f59e0b', '#10b981', '#0ea5e9', '#8b5cf6', '#f43f5e',
@@ -15,13 +16,22 @@ export function pickColor(existingColors: string[]): string {
   return TAG_PALETTE[Math.floor(Math.random() * TAG_PALETTE.length)];
 }
 
-export async function createTag(name: string, projectId: UUID | null = null): Promise<Tag> {
-  const existing = await db.tags.toArray();
-  const color = pickColor(existing.map(t => t.color));
+export async function createTag(
+  name: string,
+  projectId: UUID | null = null,
+  workspaceId?: UUID,
+  parentId: UUID | null = null,
+  customColor?: string
+): Promise<Tag> {
+  const wsId = workspaceId || (await getActiveWorkspaceId());
+  const existing = await db.tags.where('workspaceId').equals(wsId).toArray();
+  const color = customColor || pickColor(existing.map(t => t.color));
   const tag: Tag = {
     id: uuid(),
+    workspaceId: wsId,
     name: name.trim(),
     color,
+    parentId,
     isProjectTag: projectId !== null,
     projectId,
     createdAt: Date.now(),
@@ -31,7 +41,8 @@ export async function createTag(name: string, projectId: UUID | null = null): Pr
 }
 
 export async function updateTag(tag: Tag): Promise<void> {
-  await db.tags.put(tag);
+  const wsId = tag.workspaceId || (await getActiveWorkspaceId());
+  await db.tags.put({ ...tag, workspaceId: wsId });
 }
 
 export async function deleteTag(id: UUID): Promise<void> {
@@ -49,6 +60,11 @@ export async function deleteTag(id: UUID): Promise<void> {
       if (p.tagIds.includes(id)) {
         await db.projects.put({ ...p, tagIds: p.tagIds.filter(t => t !== id), updatedAt: Date.now() });
       }
+    }
+    // Unparent any child tags
+    const childTags = await db.tags.where('parentId').equals(id).toArray();
+    for (const child of childTags) {
+      await db.tags.put({ ...child, parentId: null });
     }
     await db.tags.delete(id);
   });

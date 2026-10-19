@@ -5,6 +5,7 @@ import {
   LayoutDashboard, ExternalLink, LayoutList, Sparkles, Shuffle
 } from 'lucide-react'
 import { db } from '../db/schema'
+import { getActiveWorkspaceId } from '../db/workspaces'
 import type { Question, Tag, Project, FilterState, ResolvedQuestion, MetaField, Status } from '../types'
 import { QuestionDetail } from '../components/Question/QuestionDetail'
 import { QuestionCard } from '../components/Question/QuestionCard'
@@ -28,12 +29,44 @@ const DEFAULT_FILTER: FilterState = {
 }
 
 export default function ViewerWindow() {
-  const params      = new URLSearchParams(window.location.search)
-  const initProject = params.get('project')
+  const params        = new URLSearchParams(window.location.search)
+  const initProject   = params.get('project')
+  const initWorkspace = params.get('workspace')
 
-  const allQuestions = useLiveQuery(() => db.questions.toArray(), []) ?? []
-  const allProjects  = useLiveQuery(() => db.projects.toArray(), []) ?? []
-  const allTags      = useLiveQuery(() => db.tags.toArray(), []) ?? []
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(initWorkspace)
+
+  useEffect(() => {
+    if (!currentWorkspaceId) {
+      getActiveWorkspaceId().then(id => setCurrentWorkspaceId(id))
+    }
+  }, [currentWorkspaceId])
+
+  const currentWorkspace = useLiveQuery(
+    () => (currentWorkspaceId ? db.workspaces.get(currentWorkspaceId) : undefined),
+    [currentWorkspaceId]
+  )
+
+  const allQuestions = useLiveQuery(
+    () =>
+      currentWorkspaceId
+        ? db.questions.where('workspaceId').equals(currentWorkspaceId).toArray()
+        : db.questions.toArray(),
+    [currentWorkspaceId]
+  ) ?? []
+  const allProjects  = useLiveQuery(
+    () =>
+      currentWorkspaceId
+        ? db.projects.where('workspaceId').equals(currentWorkspaceId).toArray()
+        : db.projects.toArray(),
+    [currentWorkspaceId]
+  ) ?? []
+  const allTags      = useLiveQuery(
+    () =>
+      currentWorkspaceId
+        ? db.tags.where('workspaceId').equals(currentWorkspaceId).toArray()
+        : db.tags.toArray(),
+    [currentWorkspaceId]
+  ) ?? []
 
   const tagMap     = new Map<string, Tag>(allTags.map(t => [t.id, t]))
   const projectMap = new Map<string, Project>(allProjects.map(p => [p.id, p]))
@@ -59,10 +92,13 @@ export default function ViewerWindow() {
     setActiveIndex(i => Math.min(i, Math.max(0, filtered.length - 1)))
   }, [filtered.length])
 
-  // Re-sync when editor saves
+  // Re-sync when editor saves or workspace switches
   useBroadcast(msg => {
     if (msg.type === 'question:saved') {
       // Dexie live query handles the refresh; no manual action needed
+    } else if (msg.type === 'workspace:switched') {
+      setCurrentWorkspaceId(msg.payload.id)
+      setActiveIndex(0)
     }
   })
 
@@ -82,6 +118,8 @@ export default function ViewerWindow() {
 
   const openEditor = () => {
     const url = `${window.location.origin}${window.location.pathname}?window=editor${
+      currentWorkspaceId ? `&workspace=${currentWorkspaceId}` : ''
+    }${
       activeQuestion ? `&project=${activeQuestion.projectId ?? ''}` : ''
     }`
     const w = window.open(url, 'mockbank_editor')
@@ -128,6 +166,11 @@ export default function ViewerWindow() {
           <div className="flex items-center gap-2">
             <Eye size={14} className="text-[var(--accent)]"/>
             <span className="font-display font-semibold text-sm text-[var(--text-primary)]">Viewer</span>
+            {currentWorkspace && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-normal border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)]">
+                {currentWorkspace.name}
+              </span>
+            )}
           </div>
           <span className="text-xs text-[var(--text-muted)]">
             {filtered.length} of {allQuestions.length} question{allQuestions.length !== 1 ? 's' : ''}
@@ -224,7 +267,7 @@ export default function ViewerWindow() {
         {/* Filter sidebar */}
         {filterOpen && (
           <aside className="w-56 flex-shrink-0 border-r border-[var(--border)] bg-[var(--bg-surface)] overflow-y-auto">
-            <FilterPanel filter={filter} onChange={setFilter} total={filtered.length} />
+            <FilterPanel filter={filter} onChange={setFilter} total={filtered.length} workspaceId={currentWorkspaceId} />
           </aside>
         )}
 

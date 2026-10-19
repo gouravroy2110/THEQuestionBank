@@ -15,17 +15,18 @@ const COLORS = [
 interface Props {
   open: boolean
   project?: Project | null  // null = create new
+  workspaceId?: string
   onClose: () => void
   onSaved?: (p: Project) => void
 }
 
-export function ProjectForm({ open, project, onClose, onSaved }: Props) {
-  const [form, setForm] = useState<Project>(newProject())
+export function ProjectForm({ open, project, workspaceId, onClose, onSaved }: Props) {
+  const [form, setForm] = useState<Project>(newProject(workspaceId))
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (open) setForm(project ? { ...project } : newProject())
-  }, [open, project])
+    if (open) setForm(project ? { ...project } : newProject(workspaceId))
+  }, [open, project, workspaceId])
 
   const update = (patch: Partial<Project>) => setForm(f => ({ ...f, ...patch }))
 

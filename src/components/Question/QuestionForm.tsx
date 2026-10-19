@@ -16,6 +16,7 @@ interface Props {
   question: Question
   onSaved: (q: Question) => void
   onChanged?: (q: Question) => void
+  workspaceId?: string
 }
 
 const STATUS_OPTIONS = [
@@ -32,7 +33,7 @@ const DIFF_OPTIONS = [
   { value: 'hard',   label: 'Hard' },
 ]
 
-export function QuestionForm({ question, onSaved, onChanged }: Props) {
+export function QuestionForm({ question, onSaved, onChanged, workspaceId }: Props) {
   const [form, setForm]           = useState<Question>(question)
   const [saving, setSaving]       = useState(false)
   const [dirty, setDirty]         = useState(false)
@@ -40,7 +41,11 @@ export function QuestionForm({ question, onSaved, onChanged }: Props) {
   const [solutionOpen, setSolutionOpen]     = useState(true)
   const [metaOpen, setMetaOpen]             = useState(false)
 
-  const projects = useLiveQuery(() => db.projects.toArray(), []) ?? []
+  const activeWsId = workspaceId || form.workspaceId
+  const projects = useLiveQuery(
+    () => (activeWsId ? db.projects.where('workspaceId').equals(activeWsId).toArray() : db.projects.toArray()),
+    [activeWsId]
+  ) ?? []
   const project: Project | undefined = projects.find(p => p.id === form.projectId)
 
   // Reset form when question prop changes
@@ -60,12 +65,16 @@ export function QuestionForm({ question, onSaved, onChanged }: Props) {
 
   const handleSave = useCallback(async () => {
     setSaving(true)
-    await saveQuestion(form)
-    broadcast({ type: 'question:saved', payload: { id: form.id, projectId: form.projectId } })
+    const toSave: Question = {
+      ...form,
+      workspaceId: form.workspaceId || activeWsId || 'default-workspace',
+    }
+    await saveQuestion(toSave)
+    broadcast({ type: 'question:saved', payload: { id: toSave.id, projectId: toSave.projectId } })
     setDirty(false)
     setSaving(false)
-    onSaved(form)
-  }, [form, onSaved])
+    onSaved(toSave)
+  }, [form, activeWsId, onSaved])
 
   // Ctrl+S
   useEffect(() => {
@@ -186,6 +195,7 @@ export function QuestionForm({ question, onSaved, onChanged }: Props) {
             onChange={tagIds => update({ tagIds })}
             projectTagIds={project?.tagIds ?? []}
             onOpenManager={() => setTagManagerOpen(true)}
+            workspaceId={activeWsId}
           />
         </div>
 
@@ -216,7 +226,11 @@ export function QuestionForm({ question, onSaved, onChanged }: Props) {
 
       </div>
 
-      <TagManager open={tagManagerOpen} onClose={() => setTagManagerOpen(false)} />
+      <TagManager
+        open={tagManagerOpen}
+        workspaceId={activeWsId}
+        onClose={() => setTagManagerOpen(false)}
+      />
     </div>
   )
 }

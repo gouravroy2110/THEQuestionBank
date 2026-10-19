@@ -10,6 +10,7 @@ interface Props {
   filter: FilterState
   onChange: (f: FilterState) => void
   total: number
+  workspaceId?: string | null
 }
 
 const STATUSES     = ['unattempted','wrong','partial','correct'] as const
@@ -22,9 +23,15 @@ const diffColors: Record<string,string> = {
   easy:'#10b981', medium:'#0ea5e9', hard:'#f43f5e', unseen:'#8b5cf6',
 }
 
-export function FilterPanel({ filter, onChange, total }: Props) {
-  const projects = useLiveQuery(() => db.projects.toArray(), []) ?? []
-  const allTags  = useLiveQuery(() => db.tags.toArray(), []) ?? []
+export function FilterPanel({ filter, onChange, total, workspaceId }: Props) {
+  const projects = useLiveQuery(
+    () => (workspaceId ? db.projects.where('workspaceId').equals(workspaceId).toArray() : db.projects.toArray()),
+    [workspaceId]
+  ) ?? []
+  const allTags  = useLiveQuery(
+    () => (workspaceId ? db.tags.where('workspaceId').equals(workspaceId).toArray() : db.tags.toArray()),
+    [workspaceId]
+  ) ?? []
   
   const [tagSearch, setTagSearch] = useState('')
 

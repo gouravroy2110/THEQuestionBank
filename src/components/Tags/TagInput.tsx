@@ -2,27 +2,31 @@ import { useState, useRef, useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Plus, Settings2 } from 'lucide-react'
 import { db } from '../../db/schema'
-import { createTag, getAllTags } from '../../db/tags'
+import { createTag } from '../../db/tags'
 import type { Tag, UUID } from '../../types'
 import { TagChip } from '../UI'
 
 interface Props {
   selectedIds: UUID[]
   onChange: (ids: UUID[]) => void
-  projectTagIds?: UUID[]   // inherited from project — shown but not removable
+  projectTagIds?: UUID[] // inherited from project — shown but not removable
   onOpenManager?: () => void
+  workspaceId?: string
 }
 
-export function TagInput({ selectedIds, onChange, projectTagIds = [], onOpenManager }: Props) {
+export function TagInput({ selectedIds, onChange, projectTagIds = [], onOpenManager, workspaceId }: Props) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const allTags = useLiveQuery(() => db.tags.toArray(), []) ?? []
+  const allTags = useLiveQuery(
+    () => (workspaceId ? db.tags.where('workspaceId').equals(workspaceId).toArray() : db.tags.toArray()),
+    [workspaceId]
+  ) ?? []
   const tagMap = new Map<string, Tag>(allTags.map(t => [t.id, t]))
 
-  const selectedTags   = selectedIds.map(id => tagMap.get(id)).filter((t): t is Tag => !!t)
-  const projectTags    = projectTagIds.map(id => tagMap.get(id)).filter((t): t is Tag => !!t)
+  const selectedTags = selectedIds.map(id => tagMap.get(id)).filter((t): t is Tag => !!t)
+  const projectTags = projectTagIds.map(id => tagMap.get(id)).filter((t): t is Tag => !!t)
   const projectTagIdSet = new Set(projectTagIds)
 
   const filtered = allTags.filter(t =>
@@ -32,7 +36,7 @@ export function TagInput({ selectedIds, onChange, projectTagIds = [], onOpenMana
   )
 
   const exactMatch = allTags.some(t => t.name.toLowerCase() === query.toLowerCase())
-  const canCreate  = query.trim().length > 0 && !exactMatch
+  const canCreate = query.trim().length > 0 && !exactMatch
 
   const select = (id: UUID) => {
     onChange([...selectedIds, id])
@@ -43,7 +47,7 @@ export function TagInput({ selectedIds, onChange, projectTagIds = [], onOpenMana
   const remove = (id: UUID) => onChange(selectedIds.filter(i => i !== id))
 
   const handleCreate = async () => {
-    const tag = await createTag(query.trim())
+    const tag = await createTag(query.trim(), undefined, undefined, workspaceId)
     onChange([...selectedIds, tag.id])
     setQuery('')
     setOpen(false)

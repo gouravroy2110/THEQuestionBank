@@ -1,17 +1,19 @@
 import { db } from './schema';
 import type { Project, UUID } from '../types';
 import { v4 as uuid } from 'uuid';
+import { getActiveWorkspaceId } from './workspaces';
 
 const PROJECT_COLORS = [
   '#f59e0b', '#10b981', '#0ea5e9', '#8b5cf6',
   '#f43f5e', '#06b6d4', '#84cc16', '#f97316',
 ];
 
-export function newProject(): Project {
+export function newProject(workspaceId?: UUID): Project {
   const now = Date.now();
   const colorIdx = Math.floor(Math.random() * PROJECT_COLORS.length);
   return {
     id: uuid(),
+    workspaceId: workspaceId ?? 'default-workspace',
     name: '',
     description: '',
     color: PROJECT_COLORS[colorIdx],
@@ -23,7 +25,8 @@ export function newProject(): Project {
 }
 
 export async function saveProject(p: Project): Promise<void> {
-  await db.projects.put({ ...p, updatedAt: Date.now() });
+  const wsId = p.workspaceId || (await getActiveWorkspaceId());
+  await db.projects.put({ ...p, workspaceId: wsId, updatedAt: Date.now() });
 }
 
 export async function deleteProject(id: UUID): Promise<void> {

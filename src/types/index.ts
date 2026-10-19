@@ -42,12 +42,25 @@ export interface MetaField {
   value: string;
 }
 
+// ─── Workspace ────────────────────────────────────────────────────────────────
+
+export interface Workspace {
+  id: UUID;
+  name: string;
+  description?: string;
+  color: string; // hex
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ─── Tag ──────────────────────────────────────────────────────────────────────
 
 export interface Tag {
   id: UUID;
+  workspaceId: UUID;
   name: string;
   color: string; // hex, e.g. "#f59e0b"
+  parentId?: UUID | null; // optional parent tag for hierarchy
   isProjectTag: boolean;
   projectId: UUID | null;
   createdAt: number;
@@ -57,6 +70,7 @@ export interface Tag {
 
 export interface Project {
   id: UUID;
+  workspaceId: UUID;
   name: string;
   description: string;
   color: string; // hex
@@ -90,6 +104,7 @@ export type CorrectAnswer =
 
 export interface Question {
   id: UUID;
+  workspaceId: UUID;
   projectId: UUID | null;
   questionContent: ContentBlock;
   solutionContent: ContentBlock;
@@ -134,6 +149,9 @@ export type SyncMessage =
   | { type: 'question:deleted'; payload: { id: UUID } }
   | { type: 'project:saved';    payload: { id: UUID } }
   | { type: 'project:deleted';  payload: { id: UUID } }
+  | { type: 'workspace:saved';  payload: { id: UUID } }
+  | { type: 'workspace:deleted';payload: { id: UUID } }
+  | { type: 'workspace:switched';payload: { id: UUID } }
   | { type: 'tags:changed';     payload: Record<string, never> }
   | { type: 'imagedir:changed'; payload: Record<string, never> }
   | { type: 'navigate:question';payload: { id: UUID } };
@@ -141,6 +159,7 @@ export type SyncMessage =
 // ─── Filter State ─────────────────────────────────────────────────────────────
 
 export interface FilterState {
+  workspaceId?: UUID;
   projectId: UUID | 'all';
   projectIds: UUID[];
   statuses: Status[];

@@ -1,11 +1,13 @@
 import { db } from '../db/schema'
-import type { Question, Project, Tag, ImageRecord } from '../types'
+import type { Question, Project, Tag, ImageRecord, Workspace } from '../types'
+import { getActiveWorkspaceId } from '../db/workspaces'
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 
 export interface ExportBundle {
-  version: 1
+  version: 1 | 2
   exportedAt: number
+  workspaces?: Workspace[]
   questions: Question[]
   projects: Project[]
   tags: Tag[]
@@ -13,22 +15,25 @@ export interface ExportBundle {
 }
 
 export async function exportAll(): Promise<ExportBundle> {
-  const [questions, projects, tags, images] = await Promise.all([
+  const [workspaces, questions, projects, tags, images] = await Promise.all([
+    db.workspaces.toArray(),
     db.questions.toArray(),
     db.projects.toArray(),
     db.tags.toArray(),
     db.images.toArray(),
   ])
-  return { version: 1, exportedAt: Date.now(), questions, projects, tags, images }
+  return { version: 2, exportedAt: Date.now(), workspaces, questions, projects, tags, images }
 }
 
-export async function exportFiltered(questionIds: string[]): Promise<ExportBundle> {
-  const questions = await db.questions.where('id').anyOf(questionIds).toArray()
+export async function exportWorkspace(workspaceId: string): Promise<ExportBundle> {
+  const [workspace, questions, projects, tags] = await Promise.all([
+    db.workspaces.get(workspaceId),
+    db.questions.where('workspaceId').equals(workspaceId).toArray(),
+    db.projects.where('workspaceId').equals(workspaceId).toArray(),
+    db.tags.where('workspaceId').equals(workspaceId).toArray(),
+  ])
 
-  // Collect referenced project/tag/image IDs
-  const projectIds = new Set(questions.map(q => q.projectId).filter(Boolean) as string[])
-  const tagIds     = new Set(questions.flatMap(q => q.tagIds))
-  const imageIds   = new Set(
+  const imageIds = new Set(
     questions.flatMap(q =>
       [...q.questionContent.segments, ...q.solutionContent.segments]
         .filter(s => s.type === 'image')
@@ -36,16 +41,48 @@ export async function exportFiltered(questionIds: string[]): Promise<ExportBundl
     )
   )
 
-  // Also include project tags
-  const projects = await db.projects.where('id').anyOf([...projectIds]).toArray()
-  projects.forEach(p => p.tagIds.forEach(id => tagIds.add(id)))
+  const images = await db.images.where('id').anyOf([...imageIds]).toArray()
 
-  const [tags, images] = await Promise.all([
+  return {
+    version: 2,
+    exportedAt: Date.now(),
+    workspaces: workspace ? [workspace] : [],
+    questions,
+    projects,
+    tags,
+    images,
+  }
+}
+
+export async function exportFiltered(questionIds: string[]): Promise<ExportBundle> {
+  const questions = await db.questions.where('id').anyOf(questionIds).toArray()
+
+  // Collect referenced workspace/project/tag/image IDs
+  const workspaceIds = new Set(questions.map(q => q.workspaceId).filter(Boolean) as string[])
+  const projectIds   = new Set(questions.map(q => q.projectId).filter(Boolean) as string[])
+  const tagIds       = new Set(questions.flatMap(q => q.tagIds))
+  const imageIds     = new Set(
+    questions.flatMap(q =>
+      [...q.questionContent.segments, ...q.solutionContent.segments]
+        .filter(s => s.type === 'image')
+        .map(s => (s as any).imageId)
+    )
+  )
+
+  // Also include project tags and project workspaceIds
+  const projects = await db.projects.where('id').anyOf([...projectIds]).toArray()
+  projects.forEach(p => {
+    p.tagIds.forEach(id => tagIds.add(id))
+    if (p.workspaceId) workspaceIds.add(p.workspaceId)
+  })
+
+  const [workspaces, tags, images] = await Promise.all([
+    db.workspaces.where('id').anyOf([...workspaceIds]).toArray(),
     db.tags.where('id').anyOf([...tagIds]).toArray(),
     db.images.where('id').anyOf([...imageIds]).toArray(),
   ])
 
-  return { version: 1, exportedAt: Date.now(), questions, projects, tags, images }
+  return { version: 2, exportedAt: Date.now(), workspaces, questions, projects, tags, images }
 }
 
 export function downloadJSON(bundle: ExportBundle, filename?: string) {
@@ -64,6 +101,7 @@ export function downloadJSON(bundle: ExportBundle, filename?: string) {
 export type ImportMode = 'skip' | 'overwrite'
 
 export interface ImportResult {
+  workspaces: number
   questions: number
   projects:  number
   tags:      number
@@ -73,35 +111,60 @@ export interface ImportResult {
 export async function importBundle(
   bundle: ExportBundle,
   mode: ImportMode = 'skip',
+  targetWorkspaceId?: string,
 ): Promise<ImportResult> {
-  const result: ImportResult = { questions: 0, projects: 0, tags: 0, skipped: 0 }
+  const result: ImportResult = { workspaces: 0, questions: 0, projects: 0, tags: 0, skipped: 0 }
 
-  await db.transaction('rw', db.questions, db.projects, db.tags, db.images, async () => {
-    // Tags first
+  const fallbackWorkspaceId = targetWorkspaceId || (await getActiveWorkspaceId()) || 'default-workspace'
+
+  await db.transaction('rw', db.workspaces, db.questions, db.projects, db.tags, db.images, async () => {
+    // 1. Workspaces
+    if (bundle.workspaces && bundle.workspaces.length > 0) {
+      for (const ws of bundle.workspaces) {
+        const existing = await db.workspaces.get(ws.id)
+        if (existing && mode === 'skip') { result.skipped++; continue }
+        await db.workspaces.put(ws)
+        result.workspaces++
+      }
+    }
+
+    // 2. Tags
     for (const tag of bundle.tags) {
-      const existing = await db.tags.get(tag.id)
+      const item: Tag = {
+        ...tag,
+        workspaceId: tag.workspaceId || fallbackWorkspaceId,
+      }
+      const existing = await db.tags.get(item.id)
       if (existing && mode === 'skip') { result.skipped++; continue }
-      await db.tags.put(tag)
+      await db.tags.put(item)
       result.tags++
     }
 
-    // Projects
+    // 3. Projects
     for (const project of bundle.projects) {
-      const existing = await db.projects.get(project.id)
+      const item: Project = {
+        ...project,
+        workspaceId: project.workspaceId || fallbackWorkspaceId,
+      }
+      const existing = await db.projects.get(item.id)
       if (existing && mode === 'skip') { result.skipped++; continue }
-      await db.projects.put(project)
+      await db.projects.put(item)
       result.projects++
     }
 
-    // Questions
+    // 4. Questions
     for (const question of bundle.questions) {
-      const existing = await db.questions.get(question.id)
+      const item: Question = {
+        ...question,
+        workspaceId: question.workspaceId || fallbackWorkspaceId,
+      }
+      const existing = await db.questions.get(item.id)
       if (existing && mode === 'skip') { result.skipped++; continue }
-      await db.questions.put(question)
+      await db.questions.put(item)
       result.questions++
     }
 
-    // Image metadata (not the actual files)
+    // 5. Image metadata (not the actual files)
     for (const img of bundle.images) {
       const existing = await db.images.get(img.id)
       if (!existing) await db.images.put(img)
@@ -117,7 +180,7 @@ export function readJSONFile(file: File): Promise<ExportBundle> {
     reader.onload = e => {
       try {
         const data = JSON.parse(e.target?.result as string) as ExportBundle
-        if (data.version !== 1) throw new Error('Unknown export format')
+        if (data.version !== 1 && data.version !== 2) throw new Error('Unknown export format (expected version 1 or 2)')
         resolve(data)
       } catch (err) {
         reject(err)

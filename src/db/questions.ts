@@ -1,6 +1,7 @@
 import { db } from './schema';
 import type { Question, UUID, ContentBlock } from '../types';
 import { v4 as uuid } from 'uuid';
+import { getActiveWorkspaceId } from './workspaces';
 
 export function emptyContentBlock(): ContentBlock {
   return {
@@ -8,10 +9,11 @@ export function emptyContentBlock(): ContentBlock {
   };
 }
 
-export function newQuestion(projectId: UUID | null = null): Question {
+export function newQuestion(projectId: UUID | null = null, workspaceId?: UUID): Question {
   const now = Date.now();
   return {
     id: uuid(),
+    workspaceId: workspaceId ?? 'default-workspace',
     projectId,
     questionContent: emptyContentBlock(),
     solutionContent: emptyContentBlock(),
@@ -26,7 +28,8 @@ export function newQuestion(projectId: UUID | null = null): Question {
 }
 
 export async function saveQuestion(q: Question): Promise<void> {
-  await db.questions.put({ ...q, updatedAt: Date.now() });
+  const wsId = q.workspaceId || (await getActiveWorkspaceId());
+  await db.questions.put({ ...q, workspaceId: wsId, updatedAt: Date.now() });
 }
 
 export async function deleteQuestion(id: UUID): Promise<void> {
