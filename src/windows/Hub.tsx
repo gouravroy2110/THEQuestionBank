@@ -14,7 +14,7 @@ import { WorkspaceSidebar } from '../components/Workspace/WorkspaceSidebar'
 import { CircularWorkspaceSwitcher } from '../components/Workspace/CircularWorkspaceSwitcher'
 import { WorkspaceModal } from '../components/Workspace/WorkspaceModal'
 import { Button, ConfirmDialog, EmptyState } from '../components/UI'
-import type { Project, Workspace } from '../types'
+import type { Project, Workspace, Tag } from '../types'
 import { broadcast, useBroadcast } from '../hooks/useBroadcast'
 import { findOrphanedImages, getImageDirHandle } from '../db/images'
 import {
@@ -58,11 +58,14 @@ export default function Hub() {
   }, [])
 
   // Queries scoped to active workspace
-  const workspaces = useLiveQuery(() => db.workspaces.orderBy('createdAt').toArray(), []) ?? []
+  const workspaces = useLiveQuery(() => db.workspaces.toArray(), []) ?? []
   const currentWorkspace = workspaces.find(w => w.id === activeWsId) ?? workspaces[0]
 
   const projects = useLiveQuery(
-    () => db.projects.where('workspaceId').equals(activeWsId).reverse().sortBy('createdAt'),
+    async () => {
+      const all = await db.projects.where('workspaceId').equals(activeWsId).toArray()
+      return all.sort((a, b) => b.createdAt - a.createdAt)
+    },
     [activeWsId]
   ) ?? []
 
@@ -71,9 +74,16 @@ export default function Hub() {
     [activeWsId]
   ) ?? 0
 
+  const allTags = useLiveQuery(
+    () => (activeWsId ? db.tags.where('workspaceId').equals(activeWsId).toArray() : db.tags.toArray()),
+    [activeWsId]
+  ) ?? []
+  const tagMap = new Map<string, Tag>(allTags.map(t => [t.id, t]))
+
   const recentQs = useLiveQuery(
     async () => {
-      const all = await db.questions.where('workspaceId').equals(activeWsId).reverse().sortBy('updatedAt')
+      const all = await db.questions.where('workspaceId').equals(activeWsId).toArray()
+      all.sort((a, b) => b.updatedAt - a.updatedAt)
       return all.slice(0, 5)
     },
     [activeWsId]
@@ -280,12 +290,16 @@ export default function Hub() {
               <div className="border border-[var(--border)] rounded-xl overflow-hidden divide-y divide-[var(--border)] bg-[var(--bg-elevated)]">
                 {recentQs.map(q => {
                   const seg = q.questionContent.segments.find(s => s.type === 'markdown')
-                  const text = seg ? (seg as any).text.slice(0, 80) : '[Image only]'
+                  const rawText = seg ? (seg as any).text.trim() : ''
+                  const displayTitle = rawText ? rawText.slice(0, 65) : (q.source || `Question #${q.id.slice(0, 6)}`)
+                  const directTags = q.tagIds.map(tId => tagMap.get(tId)).filter((t): t is Tag => !!t)
+                  const hasImages = q.questionContent.segments.some(s => s.type === 'image')
+
                   return (
                     <div
                       key={q.id}
                       onClick={() => openEditor(q.projectId ?? undefined)}
-                      className="flex items-center justify-between p-3.5 hover:bg-[var(--bg-overlay)] transition-colors cursor-pointer text-xs"
+                      className="flex items-center justify-between p-3.5 hover:bg-[var(--bg-overlay)] transition-colors cursor-pointer text-xs group"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <span
@@ -294,12 +308,52 @@ export default function Hub() {
                             q.status === 'wrong'   ? 'bg-rose-400' :
                             q.status === 'partial' ? 'bg-amber-400' : 'bg-zinc-500'
                           }`}
+                          title={`Status: ${q.status}`}
                         />
-                        <span className="text-[var(--text-primary)] truncate font-mono">{text}</span>
+                        <div className="flex items-center gap-2 min-w-0 flex-wrap sm:flex-nowrap">
+                          <span className="text-[var(--text-primary)] truncate font-medium group-hover:text-[var(--accent)] transition-colors">
+                            {displayTitle}
+                          </span>
+                          {hasImages && (
+                            <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-sky-500/30 text-sky-400 bg-sky-500/10 font-mono">
+                              Image
+                            </span>
+                          )}
+                          {q.questionType && q.questionType !== 'none' && (
+                            <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-zinc-700 text-[var(--text-muted)] bg-[var(--bg-elevated)] font-mono uppercase">
+                              {q.questionType}
+                            </span>
+                          )}
+                          {directTags.slice(0, 3).map(t => (
+                            <span
+                              key={t.id}
+                              className="flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full border truncate max-w-[120px]"
+                              style={{
+                                color: t.color,
+                                borderColor: `${t.color}40`,
+                                background: `${t.color}15`,
+                              }}
+                            >
+                              {t.name}
+                            </span>
+                          ))}
+                          {directTags.length > 3 && (
+                            <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">
+                              +{directTags.length - 3}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-[var(--text-muted)] text-[11px] font-mono flex-shrink-0 ml-4">
-                        {new Date(q.updatedAt).toLocaleDateString()}
-                      </span>
+                      <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                        {q.source && rawText && (
+                          <span className="text-[var(--text-muted)] text-[11px] font-mono hidden md:inline">
+                            {q.source}
+                          </span>
+                        )}
+                        <span className="text-[var(--text-muted)] text-[11px] font-mono">
+                          {new Date(q.updatedAt).toLocaleDateString()}
+                        </span>
+                      </div>
                     </div>
                   )
                 })}

@@ -76,6 +76,19 @@ export async function exportFiltered(questionIds: string[]): Promise<ExportBundl
     if (p.workspaceId) workspaceIds.add(p.workspaceId)
   })
 
+  // Also recursively collect all ancestor tags so tag hierarchy is preserved
+  const allTagsList = await db.tags.toArray()
+  const tagLookup = new Map(allTagsList.map(t => [t.id, t]))
+  for (const tid of Array.from(tagIds)) {
+    let curr = tagLookup.get(tid)
+    const visited = new Set<string>()
+    while (curr?.parentId && !visited.has(curr.parentId)) {
+      visited.add(curr.parentId)
+      tagIds.add(curr.parentId)
+      curr = tagLookup.get(curr.parentId)
+    }
+  }
+
   const [workspaces, tags, images] = await Promise.all([
     db.workspaces.where('id').anyOf([...workspaceIds]).toArray(),
     db.tags.where('id').anyOf([...tagIds]).toArray(),

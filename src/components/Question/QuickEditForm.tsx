@@ -207,6 +207,7 @@ export function QuickEditForm({ question, onSave, onCancel }: Props) {
             selectedIds={form.tagIds}
             projectTagIds={question.project?.tagIds ?? []}
             onChange={tagIds => update({ tagIds })}
+            workspaceId={question.workspaceId}
           />
         </div>
       </div>

@@ -34,10 +34,15 @@ export default function EditorWindow() {
   )
 
   const allQuestions = useLiveQuery(
-    () =>
-      currentWorkspaceId
-        ? db.questions.where('workspaceId').equals(currentWorkspaceId).reverse().sortBy('updatedAt')
-        : db.questions.orderBy('updatedAt').reverse().toArray(),
+    async () => {
+      if (currentWorkspaceId) {
+        const list = await db.questions.where('workspaceId').equals(currentWorkspaceId).toArray()
+        return list.sort((a, b) => b.updatedAt - a.updatedAt)
+      } else {
+        const list = await db.questions.toArray()
+        return list.sort((a, b) => b.updatedAt - a.updatedAt)
+      }
+    },
     [currentWorkspaceId]
   ) ?? []
   const allProjects  = useLiveQuery(
@@ -74,10 +79,13 @@ export default function EditorWindow() {
   const sidebarQuestions = allQuestions.filter(q => {
     if (activeProjectFilter && q.projectId !== activeProjectFilter) return false
     if (!searchQuery.trim()) return true
+    const query = searchQuery.toLowerCase()
     const seg = q.questionContent.segments.find(s => s.type === 'markdown')
     const text = seg ? (seg as any).text : ''
-    return text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           q.source.toLowerCase().includes(searchQuery.toLowerCase())
+    const tagNames = q.tagIds.map(id => tagMap.get(id)?.name || '').join(' ')
+    return text.toLowerCase().includes(query) ||
+           q.source.toLowerCase().includes(query) ||
+           tagNames.toLowerCase().includes(query)
   })
 
   // Auto-select first question on load
@@ -240,7 +248,11 @@ export default function EditorWindow() {
                 sidebarQuestions.map(q => {
                   const isSelected = q.id === activeId
                   const seg = q.questionContent.segments.find(s => s.type === 'markdown')
-                  const preview = seg ? (seg as any).text.slice(0, 60) : 'Untitled Question'
+                  const rawText = seg ? (seg as any).text.trim() : ''
+                  const displayTitle = rawText ? rawText.slice(0, 60) : (q.source || `Question #${q.id.slice(0, 6)}`)
+                  const directTags = q.tagIds.map(tId => tagMap.get(tId)).filter((t): t is Tag => !!t)
+                  const hasImages = q.questionContent.segments.some(s => s.type === 'image')
+
                   return (
                     <div
                       key={q.id}
@@ -252,13 +264,50 @@ export default function EditorWindow() {
                       }`}
                     >
                       <div className="flex-1 min-w-0">
-                        <p className={`text-xs truncate ${isSelected ? 'font-medium text-[var(--text-primary)]' : 'text-[var(--text-primary)]'}`}>
-                          {preview || 'Empty question'}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] text-[var(--text-muted)]">{q.status}</span>
-                          {q.source && (
-                            <span className="text-[10px] text-[var(--text-muted)] truncate max-w-[100px]">
+                        <div className="flex items-center gap-1.5">
+                          <p className={`text-xs truncate ${isSelected ? 'font-medium text-[var(--text-primary)]' : 'text-[var(--text-primary)]'}`}>
+                            {displayTitle}
+                          </p>
+                          {hasImages && (
+                            <span className="flex-shrink-0 text-[9px] px-1 py-0.2 rounded border border-sky-500/30 text-sky-400 bg-sky-500/10 font-mono">
+                              IMG
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                              q.status === 'correct' ? 'bg-emerald-400' :
+                              q.status === 'wrong'   ? 'bg-rose-400' :
+                              q.status === 'partial' ? 'bg-amber-400' : 'bg-zinc-500'
+                            }`}
+                          />
+                          <span className="text-[10px] text-[var(--text-muted)] uppercase font-mono">{q.status}</span>
+                          {q.questionType && q.questionType !== 'none' && (
+                            <span className="text-[9px] text-[var(--text-muted)] border border-[var(--border)] px-1 rounded uppercase font-mono">
+                              {q.questionType}
+                            </span>
+                          )}
+                          {directTags.slice(0, 2).map(t => (
+                            <span
+                              key={t.id}
+                              className="text-[9px] px-1.5 py-0.2 rounded-full border truncate max-w-[85px]"
+                              style={{
+                                color: t.color,
+                                borderColor: `${t.color}35`,
+                                background: `${t.color}12`,
+                              }}
+                            >
+                              {t.name}
+                            </span>
+                          ))}
+                          {directTags.length > 2 && (
+                            <span className="text-[9px] text-[var(--text-muted)]">
+                              +{directTags.length - 2}
+                            </span>
+                          )}
+                          {q.source && rawText && (
+                            <span className="text-[10px] text-[var(--text-muted)] truncate max-w-[90px] font-mono">
                               · {q.source}
                             </span>
                           )}
@@ -266,7 +315,7 @@ export default function EditorWindow() {
                       </div>
                       <button
                         onClick={e => { e.stopPropagation(); setDeleteTarget(q) }}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded text-[var(--text-muted)] hover:text-rose-400 hover:bg-rose-500/10 transition-all flex-shrink-0"
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded text-[var(--text-muted)] hover:text-rose-400 hover:bg-rose-500/10 transition-all flex-shrink-0 mt-0.5"
                         title="Delete question"
                       >
                         <Trash2 size={12} />

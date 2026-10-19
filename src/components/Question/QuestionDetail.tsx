@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Edit, Eye, EyeOff, Lightbulb, BookOpen } from 'lucide-react'
-import type { ResolvedQuestion, Question, Status } from '../../types'
+import type { ResolvedQuestion, Question, Status, Tag } from '../../types'
+import { db } from '../../db/schema'
+import { broadcast } from '../../hooks/useBroadcast'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { ContentBlockViewer } from '../ContentBlock/ContentBlockViewer'
 import { QuestionAnswerSection } from './QuestionAnswerSection'
 import { QuickEditForm } from './QuickEditForm'
 import { StatusBadge, DifficultyBadge, TagChip, Button } from '../UI'
+import { ResolvableTagChip } from '../Tags/ResolvableTagChip'
 
 interface Props {
   question: ResolvedQuestion
@@ -40,6 +44,12 @@ export function QuestionDetail({
   // Hide solution when question changes
   useEffect(() => { setSolutionVisible(false) }, [question.id])
 
+  const allTags = useLiveQuery(
+    () => (question.workspaceId ? db.tags.where('workspaceId').equals(question.workspaceId).toArray() : db.tags.toArray()),
+    [question.workspaceId]
+  ) ?? []
+  const tagMap = new Map<string, Tag>(allTags.map(t => [t.id, t]))
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -67,6 +77,13 @@ export function QuestionDetail({
         onCancel={onToggleQuickEdit}
       />
     )
+  }
+
+  const handleAddParents = async (parentIds: string[]) => {
+    const newTagIds = [...new Set([...question.tagIds, ...parentIds])]
+    await db.questions.update(question.id, { tagIds: newTagIds, updatedAt: Date.now() })
+    broadcast({ type: 'question:saved', payload: { id: question.id, projectId: question.projectId } })
+    onQuestionUpdated?.({ ...question, tagIds: newTagIds })
   }
 
   const projectTags = question.effectiveTags.filter(t => question.project?.tagIds.includes(t.id))
@@ -130,7 +147,16 @@ export function QuestionDetail({
             </span>
           )}
           {projectTags.map(t => <TagChip key={t.id} name={t.name} color={t.color} size="sm" dimmed />)}
-          {directTags.map(t => <TagChip key={t.id} name={t.name} color={t.color} size="sm" />)}
+          {directTags.map(t => (
+            <ResolvableTagChip
+              key={t.id}
+              tag={t}
+              tagMap={tagMap}
+              selectedIds={question.tagIds}
+              onAddParents={handleAddParents}
+              size="sm"
+            />
+          ))}
           {question.effectiveMetadata.map((m, i) => (
             <span key={i} className="text-[10px] text-[var(--text-muted)] border border-[var(--border)] px-1.5 py-0.5 rounded">
               <span className="opacity-60">{m.key}:</span> {m.value}

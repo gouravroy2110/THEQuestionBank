@@ -45,7 +45,10 @@ export function CircularWorkspaceSwitcher({
   onSelectWorkspace,
   onOpenNewWorkspaceModal,
 }: Props) {
-  const workspaces = useLiveQuery(() => db.workspaces.orderBy('updatedAt').reverse().toArray(), []) ?? []
+  const workspaces = useLiveQuery(async () => {
+    const list = await db.workspaces.toArray()
+    return list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+  }, []) ?? []
   const questionCounts = useLiveQuery(async () => {
     const list = await db.questions.toArray()
     const counts: Record<string, number> = {}

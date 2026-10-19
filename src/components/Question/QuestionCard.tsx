@@ -53,10 +53,19 @@ export function QuestionCard({ question, tags, projectColor, active, onClick }: 
           {preview.replace(/\*\*|__|\*|_|`|#{1,6}\s/g, '')}
         </p>
       ) : (
-        <p className="text-xs text-[var(--text-muted)] italic">Image only</p>
+        <div className="flex items-center gap-1.5 py-0.5">
+          <span className="text-xs font-medium text-[var(--text-primary)] truncate">
+            {question.source || `Question #${question.id.slice(0, 6)}`}
+          </span>
+          {hasImages && (
+            <span className="text-[10px] px-1.5 py-0.2 rounded border border-sky-500/30 text-sky-400 bg-sky-500/10 font-mono flex-shrink-0">
+              Image
+            </span>
+          )}
+        </div>
       )}
 
-      {question.source && (
+      {question.source && preview && (
         <p className="text-[10px] text-[var(--text-muted)] mt-1.5 truncate">{question.source}</p>
       )}
 

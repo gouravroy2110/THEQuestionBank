@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   FolderTree, Plus, Search, Tag as TagIcon, Sparkles,
   Layers, ExternalLink, BookOpen, Eye, LayoutDashboard,
   HelpCircle, ArrowDownToLine
 } from 'lucide-react'
-import { db } from '../../src/db/schema'
+import { db } from '../db/schema'
+import { Tag } from '../types'
 import { getActiveWorkspaceId, setActiveWorkspaceId } from '../db/workspaces'
 import { createTag, TAG_PALETTE } from '../db/tags'
 import { WorkspaceSidebar } from '../components/Workspace/WorkspaceSidebar'
@@ -31,6 +32,7 @@ export default function TagsWindow() {
 
   // Search filter
   const [search, setSearch] = useState('')
+  const [columns, setColumns] = useState<2 | 3>(3)
 
   useEffect(() => {
     if (!initWorkspace) {
@@ -48,8 +50,24 @@ export default function TagsWindow() {
     [activeWsId]
   ) ?? []
 
+  const projects = useLiveQuery(
+    () => (activeWsId ? db.projects.where('workspaceId').equals(activeWsId).toArray() : db.projects.toArray()),
+    [activeWsId]
+  ) ?? []
+
+  const projectTagIdSet = useMemo(() => {
+    return new Set(projects.flatMap(p => p.tagIds))
+  }, [projects])
+
+  // Exclude project-level tags from the tag hierarchy editor
+  const nonProjectTags = useMemo(() => {
+    return (allTags as Tag[]).filter((t: Tag) => !t.isProjectTag && !t.projectId && !projectTagIdSet.has(t.id))
+  }, [allTags, projectTagIdSet])
+
   const questionCounts = useLiveQuery(async () => {
-    const list = await db.questions.toArray()
+    const list = activeWsId
+      ? await db.questions.where('workspaceId').equals(activeWsId).toArray()
+      : await db.questions.toArray()
     const counts: Record<string, number> = {}
     for (const q of list) {
       q.tagIds.forEach(tId => {
@@ -57,7 +75,7 @@ export default function TagsWindow() {
       })
     }
     return counts
-  }, []) ?? {}
+  }, [activeWsId]) ?? {}
 
   // Sync across windows
   useBroadcast(msg => {
@@ -104,8 +122,8 @@ export default function TagsWindow() {
     setNewTagModalOpen(false)
   }
 
-  const rootTags = allTags.filter(t => !t.parentId)
-  const childTags = allTags.filter(t => !!t.parentId)
+  const rootTags = nonProjectTags.filter((t: Tag) => !t.parentId)
+  const childTags = nonProjectTags.filter((t: Tag) => !!t.parentId)
 
   return (
     <div className="h-screen flex bg-[var(--bg-base)] overflow-hidden">
@@ -176,6 +194,30 @@ export default function TagsWindow() {
               New Tag
             </Button>
 
+            {/* Columns layout toggle */}
+            <div className="flex items-center p-0.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border)] text-xs text-[var(--text-muted)]">
+              <button
+                type="button"
+                onClick={() => setColumns(2)}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                  columns === 2 ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm' : 'hover:text-[var(--text-primary)]'
+                }`}
+                title="2 Columns"
+              >
+                2 Cols
+              </button>
+              <button
+                type="button"
+                onClick={() => setColumns(3)}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                  columns === 3 ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm' : 'hover:text-[var(--text-primary)]'
+                }`}
+                title="3 Columns"
+              >
+                3 Cols
+              </button>
+            </div>
+
             <div className="h-4 w-px bg-[var(--border)] mx-1" />
 
             <button
@@ -210,7 +252,7 @@ export default function TagsWindow() {
         <div className="px-6 py-2.5 bg-[var(--bg-elevated)]/50 border-b border-[var(--border)]/60 flex items-center justify-between text-xs text-[var(--text-muted)] flex-shrink-0">
           <div className="flex items-center gap-6">
             <span>
-              Total Tags: <strong className="text-[var(--text-primary)]">{allTags.length}</strong>
+              Total Tags: <strong className="text-[var(--text-primary)]">{nonProjectTags.length}</strong>
             </span>
             <span>
               Root Categories: <strong className="text-[var(--text-primary)]">{rootTags.length}</strong>
@@ -227,12 +269,13 @@ export default function TagsWindow() {
         </div>
 
         {/* Main Tree Scroll Area */}
-        <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
+        <div className="flex-1 overflow-y-auto p-6 max-w-7xl mx-auto w-full">
           <TagHierarchyTree
-            tags={allTags}
+            tags={nonProjectTags}
             workspaceId={activeWsId}
             searchQuery={search}
             questionCounts={questionCounts}
+            columns={columns}
           />
         </div>
       </div>

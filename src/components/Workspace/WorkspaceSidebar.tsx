@@ -232,10 +232,10 @@ export function WorkspaceSidebar({
               </div>
               <div>
                 <p className="text-xs font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">
-                  MockBank Hub
+                  Home Screen
                 </p>
                 <p className="text-[10px] text-[var(--text-muted)]">
-                  Home screen & projects
+                  Projects & questions
                 </p>
               </div>
             </div>

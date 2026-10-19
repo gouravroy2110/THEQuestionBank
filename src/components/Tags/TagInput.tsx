@@ -5,6 +5,7 @@ import { db } from '../../db/schema'
 import { createTag } from '../../db/tags'
 import type { Tag, UUID } from '../../types'
 import { TagChip } from '../UI'
+import { ResolvableTagChip } from './ResolvableTagChip'
 
 interface Props {
   selectedIds: UUID[]
@@ -73,7 +74,20 @@ export function TagInput({ selectedIds, onChange, projectTagIds = [], onOpenMana
         ))}
         {/* Direct tags */}
         {selectedTags.map(t => (
-          <TagChip key={t.id} name={t.name} color={t.color} onRemove={() => remove(t.id)} size="sm" />
+          <ResolvableTagChip
+            key={t.id}
+            tag={t}
+            tagMap={tagMap}
+            selectedIds={selectedIds}
+            onRemove={() => remove(t.id)}
+            onAddParents={parentIds => {
+              const toAdd = parentIds.filter(id => !selectedIds.includes(id))
+              if (toAdd.length > 0) {
+                onChange([...selectedIds, ...toAdd])
+              }
+            }}
+            size="sm"
+          />
         ))}
       </div>
 
